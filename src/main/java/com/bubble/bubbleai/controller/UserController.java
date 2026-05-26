@@ -19,14 +19,10 @@ import com.mybatisflex.core.paginate.Page;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.BeanUtils;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.service.UserService;
 import org.springframework.web.bind.annotation.RestController;
@@ -104,7 +100,7 @@ public class UserController {
      * @return 结果
      */
     @PostMapping("/add")
-    @AuthCheck(mustRule = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Long> addUser(@RequestBody UserAddRequest userAddRequest) {
         ThrowUtils.throwIf(userAddRequest==null, ErrorCode.PARAMS_ERROR);
         User user = new User();
@@ -123,7 +119,7 @@ public class UserController {
      * @return 用户详情
      */
     @GetMapping("/get")
-    @AuthCheck(mustRule = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<User> getUserById(Long id) {
         ThrowUtils.throwIf(id<0, ErrorCode.PARAMS_ERROR);
         User user = userService.getById(id);
@@ -147,7 +143,7 @@ public class UserController {
      * 删除用户
      */
     @PostMapping("/delete")
-    @AuthCheck(mustRule = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> deleteUser(@RequestBody DeleteRequest deleteRequest) {
         if (deleteRequest == null || deleteRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -160,7 +156,7 @@ public class UserController {
      * 更新用户
      */
     @PostMapping("/update")
-    @AuthCheck(mustRule = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Boolean> updateUser(@RequestBody UserUpdateRequest updateRequest) {
         if (updateRequest == null || updateRequest.getId() == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -177,7 +173,7 @@ public class UserController {
      * @param userQueryRequest 查询请求参数
      */
     @PostMapping("/list/page/vo")
-    @AuthCheck(mustRule = UserConstant.ADMIN_ROLE)
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
     public BaseResponse<Page<UserVO>> listUserVOByPage(@RequestBody UserQueryRequest userQueryRequest) {
         ThrowUtils.throwIf(userQueryRequest==null, ErrorCode.PARAMS_ERROR);
         int pageNum = userQueryRequest.getPageNum();

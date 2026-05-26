@@ -14,7 +14,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
-import org.springframework.web.servlet.support.RequestContext;
+
 
 
 @Aspect
@@ -26,7 +26,7 @@ public class AuthInterceptor {
 
     @Around("@annotation(authCheck)")
     public Object doAuthCheck(ProceedingJoinPoint joinPoint, AuthCheck authCheck) throws Throwable {
-        String mustRule = authCheck.mustRule();
+        String mustRule = authCheck.mustRole();
         ServletRequestAttributes  requestAttributes = (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
         HttpServletRequest request = requestAttributes.getRequest();
         User loginUser = userService.getLoginUser(request);

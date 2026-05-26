@@ -15,12 +15,13 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -56,7 +57,16 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (CollUtil.isEmpty(appList)) {
             return new ArrayList<>();
         }
-        return appList.stream().map(this::getAppVO).collect(Collectors.toList());
+        //通过将用户ID放在集合中，从而避免N+1查询问题
+        Set<Long> UserIds = appList.stream().map(App::getUserId).collect(Collectors.toSet());
+        Map<Long, UserVO> userVOMap = userService.listByIds(UserIds).stream().
+                collect(Collectors.toMap(User::getId, userService::getUserVO));
+        return appList.stream().map(app -> {
+            AppVO appVO = getAppVO(app);
+            UserVO userVO = userVOMap.get(app.getUserId());
+            appVO.setUser(userVO);
+            return appVO;
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -66,38 +76,26 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         Long id = appQueryRequest.getId();
         String appName = appQueryRequest.getAppName();
+        String cover = appQueryRequest.getCover();
+        String initPrompt = appQueryRequest.getInitPrompt();
         String codeGenType = appQueryRequest.getCodeGenType();
         String deployKey = appQueryRequest.getDeployKey();
         Integer priority = appQueryRequest.getPriority();
         Long userId = appQueryRequest.getUserId();
-        Boolean isFeatured = appQueryRequest.getIsFeatured();
+        String sortField = appQueryRequest.getSort();
+        String sortOrder = appQueryRequest.getOrder();
 
-        QueryWrapper qw = QueryWrapper.create();
-        qw.eq("id", id)
+        return QueryWrapper.create().eq("id", id)
                 .like("appName", appName)
+                .like("cover", cover)
+                .like("initPrompt", initPrompt)
                 .eq("codeGenType", codeGenType)
                 .eq("deployKey", deployKey)
                 .eq("priority", priority)
                 .eq("userId", userId)
-                .eq("isDelete", 0);
+                .eq("isDelete", 0)
+                .orderBy(sortField,"ascend".equals(sortOrder));
 
-        // 精选应用：优先级大于0
-        if (isFeatured != null && isFeatured) {
-            qw.gt("priority", 0);
-        }
-
-        // 排序：白名单 + 空值兜底，ascend/descend 方向映射
-        java.util.Set<String> allowSort = java.util.Set.of("id", "appName", "priority", "createTime", "updateTime", "editTime");
-        String sort = appQueryRequest.getSort();
-        String order = appQueryRequest.getOrder();
-        if (StringUtils.isNotBlank(sort) && allowSort.contains(sort)) {
-            boolean asc = "ascend".equalsIgnoreCase(order);
-            qw.orderBy(sort, asc);
-        } else {
-            // 默认排序
-            qw.orderBy("createTime", false);
-        }
-        return qw;
     }
 
     @Override

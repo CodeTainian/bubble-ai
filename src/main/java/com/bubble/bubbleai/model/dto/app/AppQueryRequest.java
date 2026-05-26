@@ -4,6 +4,7 @@ import com.bubble.bubbleai.common.PageRequest;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.io.Serial;
 import java.io.Serializable;
 
 /**
@@ -22,6 +23,17 @@ public class AppQueryRequest extends PageRequest implements Serializable {
      * 应用名称
      */
     private String appName;
+
+    /**
+     * 应用封面
+     */
+    private String cover;
+
+    /**
+     * 应用初始化的 prompt
+     */
+    private String initPrompt;
+
 
     /**
      * 代码生成类型
@@ -43,11 +55,7 @@ public class AppQueryRequest extends PageRequest implements Serializable {
      */
     private Long userId;
 
-    /**
-     * 是否精选（通过优先级判断，优先级大于0的为精选）
-     */
-    private Boolean isFeatured;
-
+    @Serial
     private static final long serialVersionUID = 1L;
 }
 
