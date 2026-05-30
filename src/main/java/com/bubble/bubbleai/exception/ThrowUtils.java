@@ -3,7 +3,7 @@ package com.bubble.bubbleai.exception;
 public class ThrowUtils {
 
     /**
-     * 条件成立则跑异常
+     * 条件成立则抛异常
      * @param condition 条件
      * @param runtimeException 异常
      */
@@ -14,7 +14,7 @@ public class ThrowUtils {
     }
 
     /**
-     * 条件成立则跑异常
+     * 条件成立则抛异常
      * @param condition 条件
      * @param errorCode 错误码
      */
@@ -23,7 +23,7 @@ public class ThrowUtils {
     }
 
     /**
-     * 条件成立则跑异常
+     * 条件成立则抛异常
      * @param condition 条件
      * @param errorCode 错误码
      * @param message 错误信息

@@ -1,5 +1,6 @@
 package com.bubble.bubbleai.controller;
 
+import cn.hutool.json.JSONUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.annotation.AuthCheck;
 import com.bubble.bubbleai.common.BaseResponse;
@@ -24,15 +25,17 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.BeanUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.web.bind.annotation.*;
 import org.apache.commons.lang3.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
+import java.awt.*;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 应用 控制层。
@@ -279,5 +282,30 @@ public class AppController {
         return ResultUtils.success(appService.getAppVO(app));
     }
 
+    /**
+     * 应用聊天生成代码(流失SSE)
+     * @param appId 应用ID
+     * @param message 用户消息
+     * @param request 请求对象
+     * @return 生成结果流
+     */
+    @GetMapping(value = "/chat/gen/code",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId, @RequestParam String message, HttpServletRequest request) {
+        //参数校验
+        ThrowUtils.throwIf(appId==null||appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID无效");
+        ThrowUtils.throwIf(StringUtils.isBlank(message), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
+        //获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        //调用服务器生成代码(流式)
+        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        //转换为ServerSentEvent格式
+        return contentFlux.map(chunk->{
+            Map<String,String> wrapper = Map.of("d",chunk);
+            String jsonData = JSONUtil.toJsonStr(wrapper);
+            return ServerSentEvent.<String>builder().data(jsonData).build();
+        }).concatWith(Mono.just(
+                //发送结束事件
+                ServerSentEvent.<String>builder().event("done").data("").build()));
+    }
 }
 

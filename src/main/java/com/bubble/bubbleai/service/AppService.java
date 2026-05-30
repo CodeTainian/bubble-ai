@@ -1,11 +1,13 @@
 package com.bubble.bubbleai.service;
 
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
+import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.vo.AppVO;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.bubble.bubbleai.model.entity.App;
 import jakarta.servlet.http.HttpServletRequest;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -44,5 +46,15 @@ public interface AppService extends IService<App> {
      * @return 应用实体
      */
     App validateAppOwnership(Long appId, HttpServletRequest request);
+
+    /**
+     * AI生成的代码与用户的应用绑定
+     * @param appId 应用ID
+     * @param message 用户消息
+     * @param loginUser 登录用户
+     * @return 流失响应内容
+     */
+    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+
 }
 
