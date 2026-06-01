@@ -3,6 +3,7 @@ package com.bubble.bubbleai.core.saver;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
+import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 
@@ -32,7 +33,7 @@ import java.nio.charset.StandardCharsets;
  */
 public abstract class CodeFileSaveTemplate<T> {
     //文件保存根目录
-    private static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir")+"/tmp/code_output";
+    private static final String FILE_SAVE_ROOT_DIR = AppConstant.CODE_OUTPUT_ROOT_DIR;
 
     /**
      * 模板方法:保存代码的标准流程(使用appID)

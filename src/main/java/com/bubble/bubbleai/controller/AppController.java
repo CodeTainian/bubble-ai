@@ -11,10 +11,7 @@ import com.bubble.bubbleai.constant.UserConstant;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.exception.ThrowUtils;
-import com.bubble.bubbleai.model.dto.app.AppAddRequest;
-import com.bubble.bubbleai.model.dto.app.AppAdminUpdateRequest;
-import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
-import com.bubble.bubbleai.model.dto.app.AppUpdateRequest;
+import com.bubble.bubbleai.model.dto.app.*;
 import com.bubble.bubbleai.model.entity.App;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.vo.AppVO;
@@ -307,5 +304,25 @@ public class AppController {
                 //发送结束事件
                 ServerSentEvent.<String>builder().event("done").data("").build()));
     }
+
+    /**
+     * 应用部署
+     * @param appDeployRequest 部署请求
+     * @param request 请求
+     * @return 部署URL
+     */
+    @PostMapping("/deploy")
+    public BaseResponse<String> deployApp(@RequestBody AppDeployRequest appDeployRequest,
+                                       HttpServletRequest request) {
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        Long appId = appDeployRequest.getAppId();
+        ThrowUtils.throwIf(appId==null||appId<0,ErrorCode.PARAMS_ERROR,"应用ID不能为空");
+        //获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        //调用服务部署应用
+        String deployedAppUrl = appService.deployApp(appId, loginUser);
+        return ResultUtils.success(deployedAppUrl);
+    }
+
 }
 
