@@ -111,7 +111,7 @@ const pagination = computed(() => {
   }
 })
 //用户切换页号和页面大小，更新searcParam参数，并出发搜索
-const doTableChange = (page:any) => {
+const doTableChange = (page: { current?: number; pageSize?: number }) => {
   searchParams.pageNum = page.current
   searchParams.pageSize= page.pageSize
   fetchData();
@@ -123,7 +123,7 @@ const fetchData = async () => {
   })
   if (res.data.data) {
     data.value = res.data.data.records ?? []
-    total.value = res.data.data.totalRow ?? 0
+    total.value = Number(res.data.data.totalRow ?? 0)
   } else {
     message.error('获取数据失败' + res.data.message)
   }
@@ -134,7 +134,7 @@ const doSearch = () => {
   fetchData()
 }
 //删除
-const doDelete =async (id:String) =>{
+const doDelete =async (id:string) =>{
   if (!id){
     return
   }

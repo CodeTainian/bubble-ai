@@ -60,7 +60,7 @@ const router = useRouter()
 // 当前选中菜单
 const selectedKeys = ref<string[]>(['/'])
 // 监听路由变化，更新当前选中菜单
-router.afterEach((to, from, next) => {
+router.afterEach((to) => {
   selectedKeys.value = [to.path]
 })
 
@@ -117,9 +117,14 @@ const originalItems = [
     title: '用户管理',
   },
   {
+    key: '/admin/appManage',
+    label: '应用管理',
+    title: '应用管理',
+  },
+  {
     key: '/others',
-    label: h('a', { href: 'https://www.codefather.cn', target: '_blank' }, '编程导航'),
-    title: '编程导航',
+    label: h('a', { href: 'https://github.com/CodeTainian/bubble-ai', target: '_blank' }, '项目源码'),
+    title: '项目源码',
   },
 ]
 </script>

@@ -13,7 +13,7 @@ const formState = reactive<API.UserRegisterRequest>({
 
 const router = useRouter()
 
-const validatePassword = (_: any, value: string) => {
+const validatePassword = (_rule: unknown, value: string) => {
   if (value !== formState.userPassword) {
     return Promise.reject('两次输入的密码不一致!')
   }
@@ -24,7 +24,7 @@ const validatePassword = (_: any, value: string) => {
  * 提交表单
  * @param values
  */
-const handleSubmit = async (values: any) => {
+const handleSubmit = async (values: API.UserRegisterRequest) => {
   const res = await userRegister(values)
   if (res.data.code === 0 && res.data.data) {
     message.success('注册成功，请登录')

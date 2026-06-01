@@ -46,7 +46,7 @@
   </div>
 </template>
 <script lang="ts" setup>
-import { reactive, computed } from 'vue';
+import { reactive } from 'vue';
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue';
 import { userLogin } from '@/api/userController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
@@ -66,7 +66,7 @@ const loginUserStore = useLoginUserStore();
  * 提交表单
  * @param values
  */
-const handleSubmit = async (values: any) => {
+const handleSubmit = async (values: API.UserLoginRequest) => {
   const res = await userLogin(values);
   if (res.data.code===0&&res.data.data
   ) {
@@ -105,4 +105,3 @@ message.success("登录成功")
   font-size: 12px;
 }
 </style>
-

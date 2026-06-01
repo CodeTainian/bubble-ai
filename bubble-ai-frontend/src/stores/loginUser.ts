@@ -21,7 +21,7 @@ export const useLoginUserStore = defineStore('loginUser', ()=>{
   }
 
   //更新用户登录信息
-  function setLoginUser(newLoginUser: any) {
+  function setLoginUser(newLoginUser: API.LoginUserVO) {
     loginUser.value = newLoginUser
   }
 
