@@ -276,7 +276,7 @@ public class AppController {
     }
 
     /**
-     * 应用聊天生成代码(流失SSE)
+     * 应用聊天生成代码(流式SSE)
      * @param appId 应用ID
      * @param message 用户消息
      * @param request 请求对象
