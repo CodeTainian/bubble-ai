@@ -3,7 +3,7 @@
     <section class="hero">
       <div class="hero-copy">
         <span class="eyebrow">BUBBLE AI · NO CODE STUDIO</span>
-        <h1>一句话 <img src="@/assets/logo.ico" alt="" /> 呈所想</h1>
+        <h1>一句话 <img src="@/assets/logo.svg" alt="" /> 呈所想</h1>
         <p>与 AI 对话，轻松创建应用和网站</p>
       </div>
       <div class="prompt-panel">
@@ -143,7 +143,7 @@ onMounted(() => { fetchMine(); fetchGood() })
 .hero { padding: 100px 24px 74px; text-align: center; background: radial-gradient(circle at 80% 36%, rgba(81, 227, 215, .32), transparent 30%), radial-gradient(circle at 28% 84%, rgba(134, 231, 205, .18), transparent 30%), linear-gradient(145deg, #fff 16%, #f4fbfa 66%, #e4f8fa); }
 .hero-copy .eyebrow, .section-heading span { color: #1cafa6; font-size: 11px; font-weight: 700; letter-spacing: 2px; }
 h1 { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 16px 0 7px; color: #10212a; font-size: clamp(38px, 5vw, 62px); letter-spacing: 5px; }
-h1 img { width: 58px; height: 58px; }
+h1 img { width: 58px; height: 58px; border-radius: 15px; }
 .hero-copy p { color: #7b888b; font-size: 18px; letter-spacing: 2px; }
 .prompt-panel { max-width: 920px; margin: 42px auto 18px; padding: 16px 18px 14px; border: 1px solid rgba(120, 177, 176, .26); border-radius: 26px; background: rgba(255, 255, 255, .9); box-shadow: 0 22px 50px rgba(62, 152, 148, .12); text-align: left; }
 .prompt-panel textarea { font-size: 17px; line-height: 1.8; resize: none; }

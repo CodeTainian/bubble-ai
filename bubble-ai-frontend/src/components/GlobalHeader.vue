@@ -5,7 +5,7 @@
       <a-col flex="200px">
         <RouterLink to="/">
           <div class="header-left">
-            <img class="logo" src="@/assets/logo.ico" alt="Logo" />
+            <img class="logo" src="@/assets/logo.svg" alt="Logo" />
             <h1 class="site-title">Bubble IA</h1>
           </div>
         </RouterLink>
@@ -144,6 +144,7 @@ const originalItems = [
 .logo {
   height: 48px;
   width: 48px;
+  border-radius: 13px;
 }
 
 .site-title {
