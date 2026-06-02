@@ -6,6 +6,9 @@
         <img src="@/assets/logo.svg" alt="" />
         <span>等待你的下一句灵感</span>
       </div>
+      <div v-if="app.deployKey" class="cover-actions">
+        <a-button type="primary" @click.stop="openDeployedApp"><EyeOutlined /> 查看作品</a-button>
+      </div>
     </div>
     <div class="card-body">
       <div class="title-row">
@@ -30,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { MoreOutlined } from '@ant-design/icons-vue'
+import { EyeOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 
@@ -39,6 +42,7 @@ defineEmits<{ edit: [app: API.AppVO]; delete: [app: API.AppVO] }>()
 
 const router = useRouter()
 const openApp = () => props.app.id && router.push(`/app/chat/${props.app.id}`)
+const openDeployedApp = () => props.app.deployKey && window.open(`http://localhost:8080/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
 const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD') : '刚刚创建'
 </script>
 
@@ -52,10 +56,12 @@ const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD')
   transition: transform .25s ease, box-shadow .25s ease;
 }
 .app-card:hover { transform: translateY(-5px); box-shadow: 0 18px 42px rgba(26, 113, 119, .13); }
-.cover-wrap { aspect-ratio: 16 / 9; overflow: hidden; background: #eff9f8; }
+.cover-wrap { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #eff9f8; }
 .cover { width: 100%; height: 100%; object-fit: cover; }
 .cover-placeholder { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #86a4a3; background: linear-gradient(135deg, #f3fbfa, #e5f5f6); }
 .cover-placeholder img { width: 52px; height: 52px; border-radius: 14px; opacity: .75; }
+.cover-actions { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12, 37, 42, .24); opacity: 0; transition: opacity .2s ease; visibility: hidden; }
+.app-card:hover .cover-actions, .app-card:focus-within .cover-actions { opacity: 1; visibility: visible; }
 .card-body { padding: 15px 16px 13px; }
 .title-row, .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 h3 { overflow: hidden; margin: 0; color: #142226; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
