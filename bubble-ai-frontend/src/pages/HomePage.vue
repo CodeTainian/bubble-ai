@@ -54,7 +54,7 @@
       </div>
       <a-spin :spinning="loadingGood">
         <div v-if="goodApps.length" class="card-grid">
-          <AppCard v-for="item in goodApps" :key="item.id" :app="item" featured />
+          <AppCard v-for="item in goodApps" :key="item.id" :app="item" featured owner-only />
         </div>
         <a-empty v-else description="精选应用正在赶来的路上" />
       </a-spin>

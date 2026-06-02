@@ -1,47 +1,55 @@
 <template>
-  <article class="app-card" @click="openApp">
-    <div class="cover-wrap">
-      <img v-if="app.cover" :src="app.cover" :alt="app.appName" class="cover" />
-      <div v-else class="cover-placeholder">
-        <img src="@/assets/logo.svg" alt="" />
-        <span>等待你的下一句灵感</span>
+  <a-tooltip :title="chatPermissionTip || undefined">
+    <article class="app-card" :class="{ forbidden: !canOpenChat }" @click="openApp">
+      <div class="cover-wrap">
+        <img v-if="app.cover" :src="app.cover" :alt="app.appName" class="cover" />
+        <div v-else class="cover-placeholder">
+          <img src="@/assets/logo.svg" alt="" />
+          <span>等待你的下一句灵感</span>
+        </div>
+        <div v-if="app.deployKey" class="cover-actions">
+          <a-button type="primary" @click.stop="openDeployedApp"><EyeOutlined /> 查看作品</a-button>
+        </div>
       </div>
-      <div v-if="app.deployKey" class="cover-actions">
-        <a-button type="primary" @click.stop="openDeployedApp"><EyeOutlined /> 查看作品</a-button>
+      <div class="card-body">
+        <div class="title-row">
+          <h3>{{ app.appName || '未命名应用' }}</h3>
+          <a-tag v-if="featured" color="cyan">精选</a-tag>
+        </div>
+        <p>{{ app.initPrompt || '还没有应用描述' }}</p>
+        <div class="card-footer">
+          <span>{{ app.user?.userName || '我的应用' }} · {{ formatDate(app.createTime) }}</span>
+          <a-dropdown v-if="editable" :trigger="['click']">
+            <a-button type="text" size="small" @click.stop><MoreOutlined /></a-button>
+            <template #overlay>
+              <a-menu>
+                <a-menu-item @click="$emit('edit', app)">编辑信息</a-menu-item>
+                <a-menu-item danger @click="$emit('delete', app)">删除应用</a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </div>
       </div>
-    </div>
-    <div class="card-body">
-      <div class="title-row">
-        <h3>{{ app.appName || '未命名应用' }}</h3>
-        <a-tag v-if="featured" color="cyan">精选</a-tag>
-      </div>
-      <p>{{ app.initPrompt || '还没有应用描述' }}</p>
-      <div class="card-footer">
-        <span>{{ app.user?.userName || '我的应用' }} · {{ formatDate(app.createTime) }}</span>
-        <a-dropdown v-if="editable" :trigger="['click']">
-          <a-button type="text" size="small" @click.stop><MoreOutlined /></a-button>
-          <template #overlay>
-            <a-menu>
-              <a-menu-item @click="$emit('edit', app)">编辑信息</a-menu-item>
-              <a-menu-item danger @click="$emit('delete', app)">删除应用</a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
-      </div>
-    </div>
-  </article>
+    </article>
+  </a-tooltip>
 </template>
 
 <script setup lang="ts">
 import { EyeOutlined, MoreOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useLoginUserStore } from '@/stores/loginUser'
 
-const props = defineProps<{ app: API.AppVO; editable?: boolean; featured?: boolean }>()
+const props = defineProps<{ app: API.AppVO; editable?: boolean; featured?: boolean; ownerOnly?: boolean }>()
 defineEmits<{ edit: [app: API.AppVO]; delete: [app: API.AppVO] }>()
 
 const router = useRouter()
-const openApp = () => props.app.id && router.push(`/app/chat/${props.app.id}`)
+const loginUserStore = useLoginUserStore()
+const isOwner = computed(() => Boolean(props.app.userId && loginUserStore.loginUser.id && String(props.app.userId) === String(loginUserStore.loginUser.id)))
+const canOpenChat = computed(() => !props.ownerOnly || isOwner.value)
+const chatPermissionTip = computed(() => props.ownerOnly && !isOwner.value ? '无法在别人的作品下对话哦~' : '')
+const openApp = () => canOpenChat.value && props.app.id && router.push(`/app/chat/${props.app.id}`)
 const openDeployedApp = () => props.app.deployKey && window.open(`http://localhost:8080/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
 const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD') : '刚刚创建'
 </script>
@@ -55,6 +63,7 @@ const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD')
   background: #fff;
   transition: transform .25s ease, box-shadow .25s ease;
 }
+.app-card.forbidden { cursor: not-allowed; }
 .app-card:hover { transform: translateY(-5px); box-shadow: 0 18px 42px rgba(26, 113, 119, .13); }
 .cover-wrap { position: relative; aspect-ratio: 16 / 9; overflow: hidden; background: #eff9f8; }
 .cover { width: 100%; height: 100%; object-fit: cover; }

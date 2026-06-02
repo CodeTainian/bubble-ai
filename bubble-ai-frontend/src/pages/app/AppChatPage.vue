@@ -361,7 +361,15 @@ const deploy = async () => {
   deploying.value = true
   try {
     const res = await deployApp({ appId: id })
-    if (res.data.code === 0 && res.data.data) Modal.success({ title: '部署成功', content: `访问地址：${res.data.data}`, okText: '打开网站', onOk: () => window.open(res.data.data, '_blank') })
+    if (res.data.code === 0 && res.data.data) Modal.success({
+      title: '部署成功',
+      content: `访问地址：${res.data.data}`,
+      okText: '打开网站',
+      onOk: (close) => {
+        window.open(res.data.data, '_blank')
+        close()
+      },
+    })
     else message.error('部署失败：' + res.data.message)
   } finally { deploying.value = false }
 }
