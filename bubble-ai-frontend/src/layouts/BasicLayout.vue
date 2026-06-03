@@ -23,14 +23,19 @@ const route = useRoute()
 
 <style scoped>
 .basic-layout {
-  background: none;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(89, 211, 205, .12), transparent 28%),
+    radial-gradient(circle at 86% 12%, rgba(102, 166, 255, .1), transparent 26%),
+    #f6f8fb;
+  background-attachment: fixed;
 }
 
 .main-content {
-  max-width: 1200px;
-  padding: 24px;
-  background: white;
-  margin: 16px auto 56px;
+  max-width: 1400px;
+  padding: 0 24px;
+  background: transparent;
+  margin: 30px auto 64px;
   width: calc(100% - 32px);
 }
 
@@ -44,6 +49,11 @@ const route = useRoute()
   width: 100%;
   padding: 0;
   margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .full-bleed-content {
@@ -51,6 +61,10 @@ const route = useRoute()
   width: 100%;
   padding: 0;
   margin: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 </style>

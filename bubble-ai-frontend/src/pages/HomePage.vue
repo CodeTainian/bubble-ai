@@ -3,7 +3,7 @@
     <section class="hero">
       <div class="hero-copy">
         <span class="eyebrow">BUBBLE AI · NO CODE STUDIO</span>
-        <h1>一句话 <img src="@/assets/logo.svg" alt="" /> 呈所想</h1>
+        <h1><span class="headline-text">一句话</span> <img src="@/assets/logo.svg" alt="" /> <span class="headline-text">呈所想</span></h1>
         <p>与 AI 对话，轻松创建应用和网站</p>
       </div>
       <div class="prompt-panel">
@@ -22,7 +22,9 @@
         </div>
       </div>
       <div class="suggestions">
-        <button v-for="item in suggestions" :key="item" @click="prompt = item">{{ item }}</button>
+        <button v-for="item in suggestions" :key="item.title" class="suggestion-card" @click="prompt = item.prompt">
+          {{ item.title }}
+        </button>
       </div>
     </section>
 
@@ -89,7 +91,24 @@ const myTotal = ref(0)
 const goodTotal = ref(0)
 const myParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: 6 })
 const goodParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: 6 })
-const suggestions = ['波普风电商页面', '企业官网', '个人博客', '旅行攻略网站']
+const suggestions = [
+  {
+    title: '企业官网',
+    prompt: '帮我生成一个科技服务公司的企业官网，包含首页首屏、服务介绍、核心优势、客户案例、团队介绍和联系表单；整体风格简洁专业，蓝白配色，适合展示 AI 软件定制与数字化转型能力。',
+  },
+  {
+    title: '产品落地页',
+    prompt: '帮我生成一个 SaaS 产品落地页，用于推广一款团队协作工具；需要包含产品价值主张、功能亮点、使用流程、价格套餐、用户评价和立即试用按钮，页面风格现代、有科技感。',
+  },
+  {
+    title: '个人作品集',
+    prompt: '帮我生成一个前端开发者个人作品集网站，包含个人简介、技能栈、精选项目、项目截图展示、工作经历和联系方式；整体设计要清爽高级，突出专业能力和项目成果。',
+  },
+  {
+    title: '门店展示页',
+    prompt: '帮我生成一个咖啡店品牌展示网站，包含品牌故事、门店环境、招牌饮品、菜单价格、营业时间、地图位置和预约联系入口；视觉风格温暖但不花哨，适合移动端浏览。',
+  },
+]
 
 const createApp = async () => {
   if (!prompt.value.trim()) return message.warning('先告诉我你想创建什么')
@@ -139,24 +158,27 @@ onMounted(() => { fetchMine(); fetchGood() })
 </script>
 
 <style scoped>
-.home-page { margin: -24px; background: #f8fbfb; }
-.hero { padding: 100px 24px 74px; text-align: center; background: radial-gradient(circle at 80% 36%, rgba(81, 227, 215, .32), transparent 30%), radial-gradient(circle at 28% 84%, rgba(134, 231, 205, .18), transparent 30%), linear-gradient(145deg, #fff 16%, #f4fbfa 66%, #e4f8fa); }
-.hero-copy .eyebrow, .section-heading span { color: #1cafa6; font-size: 11px; font-weight: 700; letter-spacing: 2px; }
-h1 { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 16px 0 7px; color: #10212a; font-size: clamp(38px, 5vw, 62px); letter-spacing: 5px; }
-h1 img { width: 58px; height: 58px; border-radius: 15px; }
-.hero-copy p { color: #7b888b; font-size: 18px; letter-spacing: 2px; }
-.prompt-panel { max-width: 920px; margin: 42px auto 18px; padding: 16px 18px 14px; border: 1px solid rgba(120, 177, 176, .26); border-radius: 26px; background: rgba(255, 255, 255, .9); box-shadow: 0 22px 50px rgba(62, 152, 148, .12); text-align: left; }
-.prompt-panel textarea { font-size: 17px; line-height: 1.8; resize: none; }
+.home-page { position: relative; min-height: calc(100vh - 64px); overflow: hidden; padding: 86px 24px 56px; background: radial-gradient(circle at 18% 6%, rgba(255,255,255,.68), transparent 26%), radial-gradient(circle at 76% 18%, rgba(255,255,255,.22), transparent 24%), linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(218,252,248,.72) 34%, rgba(116,210,246,.42) 76%, rgba(102,166,255,.4) 100%); }
+.home-page::before { position: absolute; inset: 0; background: radial-gradient(circle at 70% 48%, rgba(37,231,218,.2), transparent 24%), radial-gradient(circle at 36% 76%, rgba(102,166,255,.24), transparent 30%); content: ""; pointer-events: none; }
+.hero { position: relative; z-index: 1; max-width: 1100px; min-height: 640px; margin: 0 auto; padding: 70px 24px 36px; text-align: center; }
+.hero-copy .eyebrow, .section-heading span { color: #0eaaa0; font-size: 12px; font-weight: 900; letter-spacing: 7px; }
+h1 { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 18px 0 12px; color: #101d28; font-family: "YouSheBiaoTiHei", "Alimama ShuHeiTi", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; font-size: clamp(38px, 4.7vw, 66px); font-weight: 900; letter-spacing: 1px; line-height: 1.08; text-shadow: 0 10px 34px rgba(17, 54, 76, .1); }
+h1 .headline-text { background: linear-gradient(110deg, #101d28 8%, #142d4f 48%, #0aaea4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+h1 img { width: clamp(46px, 4.2vw, 58px); height: clamp(46px, 4.2vw, 58px); border-radius: 16px; box-shadow: 0 18px 36px rgba(18, 80, 152, .18); }
+.hero-copy p { color: #687981; font-size: 20px; font-weight: 700; letter-spacing: 6px; }
+.prompt-panel { max-width: 920px; margin: 72px auto 18px; padding: 18px 18px 16px; border: 1px solid rgba(255,255,255,.7); border-radius: 28px; background: rgba(255, 255, 255, .82); box-shadow: 0 28px 80px rgba(24, 108, 151, .18); text-align: left; backdrop-filter: blur(16px); }
+.prompt-panel textarea { color: #223238; font-size: 18px; line-height: 1.8; resize: none; }
 .prompt-actions, .section-heading { display: flex; align-items: center; justify-content: space-between; }
 .suggestion-title { color: #9ba5a6; font-size: 13px; }
-.suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.suggestions button { padding: 9px 15px; border: 1px solid #e5ecec; border-radius: 20px; color: #667476; background: rgba(255,255,255,.86); cursor: pointer; }
-.showcase { padding: 58px 62px 22px; background: #fff; }
+.suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 24px auto 0; }
+.suggestion-card { min-height: 0; padding: 9px 18px; border: 1px solid rgba(255,255,255,.72); border-radius: 14px; color: #5d7178; background: rgba(255,255,255,.78); box-shadow: 0 10px 28px rgba(45, 123, 142, .08); cursor: pointer; font-size: 14px; font-weight: 700; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease; backdrop-filter: blur(8px); }
+.suggestion-card:hover { border-color: rgba(28, 175, 166, .52); color: #10212a; box-shadow: 0 16px 38px rgba(45, 123, 142, .14); transform: translateY(-2px); }
+.showcase { position: relative; z-index: 1; max-width: 1220px; margin: 52px auto 0; padding: 42px 42px 34px; border: 1px solid rgba(255,255,255,.54); border-radius: 28px; background: rgba(255,255,255,.9); box-shadow: 0 26px 70px rgba(31, 111, 148, .12); backdrop-filter: blur(14px); }
 .featured { padding-bottom: 70px; }
 .section-heading { margin-bottom: 24px; }
 .section-heading h2 { margin: 5px 0 0; color: #15272b; font-size: 30px; }
 .section-heading .ant-input-search { width: 220px; }
 .card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
 .ant-pagination { margin-top: 25px; text-align: center; }
-@media (max-width: 800px) { .showcase { padding: 42px 22px 16px; } .card-grid { grid-template-columns: 1fr; } .section-heading { align-items: flex-end; } .section-heading .ant-input-search { width: 160px; } }
+@media (max-width: 800px) { .home-page { padding: 48px 14px 42px; } .hero { min-height: auto; padding: 48px 4px 36px; } h1 { flex-wrap: wrap; letter-spacing: 1px; } .hero-copy p { letter-spacing: 2px; } .prompt-panel { margin-top: 42px; } .showcase { padding: 30px 18px 16px; } .card-grid { grid-template-columns: 1fr; } .section-heading { align-items: flex-end; } .section-heading .ant-input-search { width: 160px; } }
 </style>

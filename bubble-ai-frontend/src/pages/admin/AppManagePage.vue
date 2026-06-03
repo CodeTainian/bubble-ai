@@ -1,6 +1,11 @@
 <template>
-  <div class="app-manage-page">
-    <div class="page-title"><h2>应用管理</h2><p>管理站内应用、封面与精选内容</p></div>
+  <div class="admin-page app-manage-page">
+    <div class="page-title">
+      <div>
+        <h2>应用管理</h2>
+        <p>管理站内应用、封面与精选内容</p>
+      </div>
+    </div>
     <section class="filter-card">
       <div class="filter-head">
         <div class="filter-title"><FilterOutlined /> 筛选条件</div>
@@ -31,16 +36,28 @@
     <section class="table-card">
       <a-table :columns="columns" :data-source="data" :pagination="pagination" row-key="id" @change="tableChange">
         <template #bodyCell="{ column, record }">
-          <template v-if="column.dataIndex === 'cover'">
-            <a-image v-if="record.cover" :src="record.cover" :width="100" />
+          <template v-if="column.dataIndex === 'id'">
+            <span class="muted mono">{{ record.id }}</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'appName'">
+            <span class="name-cell">{{ record.appName || '未命名应用' }}</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'cover'">
+            <a-image v-if="record.cover" :src="record.cover" :width="92" class="cover-preview" />
             <span v-else class="muted">暂无封面</span>
           </template>
+          <template v-else-if="column.dataIndex === 'codeGenType'">
+            <a-tag class="type-tag">{{ record.codeGenType || '-' }}</a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'userId'">
+            <span class="muted mono">{{ record.userId || '-' }}</span>
+          </template>
           <template v-else-if="column.dataIndex === 'priority'">
-            <a-tag :color="record.priority === 99 ? 'cyan' : 'default'">{{ record.priority === 99 ? '精选' : record.priority ?? 0 }}</a-tag>
+            <a-tag :class="record.priority === 99 ? 'featured-tag' : 'plain-tag'">{{ record.priority === 99 ? '精选' : record.priority ?? 0 }}</a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'createTime'">{{ formatDate(record.createTime) }}</template>
           <template v-else-if="column.key === 'action'">
-            <a-space>
+            <a-space class="action-group">
               <a-button type="link" @click="edit(record.id)">编辑</a-button>
               <a-button type="link" @click="feature(record)">精选</a-button>
               <a-button danger type="link" @click="remove(record)">删除</a-button>
@@ -65,10 +82,10 @@ const data = ref<API.AppVO[]>([])
 const total = ref(0)
 const searchParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: 10 })
 const columns = [
-  { title: 'ID', dataIndex: 'id', width: 70 }, { title: '应用名称', dataIndex: 'appName' },
-  { title: '封面', dataIndex: 'cover' }, { title: '生成类型', dataIndex: 'codeGenType' },
-  { title: '用户 ID', dataIndex: 'userId' }, { title: '优先级', dataIndex: 'priority' },
-  { title: '创建时间', dataIndex: 'createTime' }, { title: '操作', key: 'action', width: 210 },
+  { title: 'ID', dataIndex: 'id', width: 180 }, { title: '应用名称', dataIndex: 'appName', width: 220 },
+  { title: '封面', dataIndex: 'cover', width: 130 }, { title: '生成类型', dataIndex: 'codeGenType', width: 120 },
+  { title: '用户 ID', dataIndex: 'userId', width: 190 }, { title: '优先级', dataIndex: 'priority', width: 110 },
+  { title: '创建时间', dataIndex: 'createTime', width: 150 }, { title: '操作', key: 'action', width: 190 },
 ]
 const pagination = computed(() => ({ current: searchParams.pageNum, pageSize: searchParams.pageSize, total: total.value, showSizeChanger: true, showTotal: (value: number) => `共 ${value} 条` }))
 const fetchData = async () => {
@@ -97,33 +114,47 @@ onMounted(fetchData)
 </script>
 
 <style scoped>
-.app-manage-page { min-width: 0; }
-.page-title { margin-bottom: 22px; }
-.page-title h2 { margin-bottom: 5px; color: #172326; font-size: 30px; font-weight: 800; }.page-title p { margin: 0; color: #8a999b; }.muted { color: #b6bfc0; }
+.admin-page { min-width: 0; color: #17212b; font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+.page-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
+.page-title h2 { margin: 0 0 7px; color: #111827; font-size: 28px; font-weight: 850; letter-spacing: -.3px; }
+.page-title p { margin: 0; color: #8a96a8; font-size: 14px; }
+.muted { color: #9aa6b2; }
+.mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; }
 .filter-card {
   margin-bottom: 22px;
   overflow: hidden;
-  border: 1px solid #e8eff2;
-  border-radius: 14px;
+  border: 1px solid #edf0f5;
+  border-radius: 22px;
   background: #fff;
-  box-shadow: 0 12px 34px rgba(33, 96, 113, .07);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .045);
 }
 .filter-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 15px 18px;
-  border-bottom: 1px solid #edf3f5;
-  background: linear-gradient(180deg, #fbfefe, #f7fbfb);
+  padding: 18px 22px;
+  border-bottom: 1px solid #f0f3f7;
+  background: linear-gradient(180deg, #fff, #fbfcfe);
 }
 .filter-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #273a40;
+  color: #1f2a37;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 750;
+}
+.filter-head :deep(.ant-btn) {
+  height: 38px;
+  border-radius: 999px;
+  padding: 0 18px;
+  font-weight: 700;
+}
+.filter-head :deep(.ant-btn-primary) {
+  border-color: #1677ff;
+  background: #1677ff;
+  box-shadow: 0 10px 22px rgba(22, 119, 255, .18);
 }
 
 .filter-grid {
@@ -131,34 +162,87 @@ onMounted(fetchData)
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   align-items: center;
-  padding: 18px;
+  padding: 20px 22px 22px;
 }
 .filter-field {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
 }
 .filter-field label {
-  flex: 0 0 auto;
-  color: #526367;
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 40px;
+  color: #5f6b7a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
   white-space: nowrap;
+}
+.filter-field :deep(.ant-input-affix-wrapper),
+.filter-field :deep(.ant-input) {
+  height: 40px;
+  border-color: #e5eaf1;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+.filter-field :deep(.ant-input-affix-wrapper) {
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.filter-field :deep(.ant-input),
+.filter-field :deep(.ant-input-affix-wrapper > input.ant-input) {
+  height: 38px;
+  line-height: 38px;
 }
 
 .table-card {
   overflow: hidden;
-  border: 1px solid #edf1f4;
-  border-radius: 14px;
+  border: 1px solid #edf0f5;
+  border-radius: 22px;
   background: #fff;
-  box-shadow: 0 12px 34px rgba(33, 96, 113, .06);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, .05);
 }
 
 .table-card :deep(.ant-table-thead > tr > th) {
-  color: #314146;
-  background: #fafcfc;
-  font-weight: 800;
+  border-bottom: 1px solid #edf0f5;
+  color: #5d6b7c;
+  background: #f8fafc;
+  font-size: 13px;
+  font-weight: 750;
+}
+.table-card :deep(.ant-table-tbody > tr > td) {
+  height: 70px;
+  border-bottom: 1px solid #f1f4f8;
+  color: #1f2937;
+}
+.table-card :deep(.ant-table-tbody > tr:hover > td) {
+  background: #f7fbff;
+}
+.name-cell { color: #111827; font-weight: 750; }
+.cover-preview :deep(img) { border-radius: 12px; object-fit: cover; }
+.type-tag,
+.plain-tag,
+.featured-tag {
+  border: 0;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-weight: 700;
+}
+.type-tag { color: #2f5f8f; background: #edf6ff; }
+.plain-tag { color: #697586; background: #f1f4f8; }
+.featured-tag { color: #07866f; background: #e7fbf5; }
+.action-group :deep(.ant-btn-link) {
+  padding-inline: 4px;
+  color: #3377ff;
+  font-weight: 650;
+}
+.action-group :deep(.ant-btn-link.ant-btn-dangerous) {
+  color: #ee6b6e;
+}
+.table-card :deep(.ant-pagination) {
+  margin: 18px 22px;
 }
 
 @media (max-width: 900px) {

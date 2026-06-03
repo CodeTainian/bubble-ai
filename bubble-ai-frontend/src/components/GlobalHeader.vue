@@ -131,8 +131,20 @@ const originalItems = [
 
 <style scoped>
 .header {
-  background: #fff;
-  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 56px;
+  border-bottom: 1px solid rgba(229, 233, 240, .86);
+  background: rgba(255, 255, 255, .86);
+  padding: 0 22px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .04);
+  backdrop-filter: blur(16px);
+}
+
+.header :deep(.ant-row) {
+  height: 100%;
+  align-items: center;
 }
 
 .header-left {
@@ -142,18 +154,56 @@ const originalItems = [
 }
 
 .logo {
-  height: 48px;
-  width: 48px;
-  border-radius: 13px;
+  height: 40px;
+  width: 40px;
+  border-radius: 12px;
+  box-shadow: 0 8px 18px rgba(20, 85, 135, .14);
 }
 
 .site-title {
   margin: 0;
   font-size: 18px;
+  font-weight: 800;
   color: #1890ff;
 }
 
-.ant-menu-horizontal {
+.header :deep(.ant-menu) {
+  background: transparent;
+}
+
+.header :deep(.ant-menu-horizontal) {
   border-bottom: none !important;
+}
+
+.header :deep(.ant-menu-horizontal > .ant-menu-item) {
+  color: #1f333a;
+  line-height: 56px;
+  font-weight: 600;
+}
+
+.header :deep(.ant-menu-horizontal > .ant-menu-item-selected) {
+  color: #1677ff;
+}
+
+.header :deep(.ant-menu-horizontal > .ant-menu-item::after) {
+  border-bottom-width: 3px;
+  border-radius: 999px;
+  inset-inline: 18px;
+}
+
+.user-login-status {
+  display: flex;
+  align-items: center;
+}
+
+.user-login-status :deep(.ant-space) {
+  color: #1f333a;
+  font-weight: 600;
+}
+
+.user-login-status :deep(.ant-btn-primary) {
+  border-radius: 9px;
+  font-weight: 700;
+  box-shadow: 0 10px 22px rgba(24, 144, 255, .2);
 }
 </style>

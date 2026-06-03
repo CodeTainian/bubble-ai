@@ -14,6 +14,7 @@ const router = createRouter({
       path: '/',
       name: '主页',
       component: HomePage,
+      meta: { fullBleed: true },
     },
     {
       path: '/user/login',
@@ -25,6 +26,7 @@ const router = createRouter({
       path: '/user/register',
       name: '用户注册',
       component: UserRegisterPage,
+      meta: { fullBleed: true },
     },
     {
       path: '/admin/userManage',
