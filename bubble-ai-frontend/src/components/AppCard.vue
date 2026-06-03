@@ -12,13 +12,21 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="title-row">
-          <h3>{{ app.appName || '未命名应用' }}</h3>
-          <a-tag v-if="featured" color="cyan">精选</a-tag>
+        <div class="app-meta">
+          <a-avatar :size="46" :src="app.user?.userAvatar" class="author-avatar">
+            {{ authorInitial }}
+          </a-avatar>
+          <div class="app-info">
+            <div class="title-row">
+              <h3>{{ app.appName || '未命名应用' }}</h3>
+              <a-tag v-if="featured" color="cyan">精选</a-tag>
+            </div>
+            <span class="author-name">{{ app.user?.userName || '我的应用' }}</span>
+          </div>
         </div>
         <p>{{ app.initPrompt || '还没有应用描述' }}</p>
         <div class="card-footer">
-          <span>{{ app.user?.userName || '我的应用' }} · {{ formatDate(app.createTime) }}</span>
+          <span>{{ formatDate(app.createTime) }}</span>
           <a-dropdown v-if="editable" :trigger="['click']">
             <a-button type="text" size="small" @click.stop><MoreOutlined /></a-button>
             <template #overlay>
@@ -49,6 +57,7 @@ const loginUserStore = useLoginUserStore()
 const isOwner = computed(() => Boolean(props.app.userId && loginUserStore.loginUser.id && String(props.app.userId) === String(loginUserStore.loginUser.id)))
 const canOpenChat = computed(() => !props.ownerOnly || isOwner.value)
 const chatPermissionTip = computed(() => props.ownerOnly && !isOwner.value ? '无法在别人的作品下对话哦~' : '')
+const authorInitial = computed(() => (props.app.user?.userName || props.app.user?.userAccount || '我').slice(0, 1))
 const openApp = () => canOpenChat.value && props.app.id && router.push(`/app/chat/${props.app.id}`)
 const openDeployedApp = () => props.app.deployKey && window.open(`http://localhost:8080/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
 const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD') : '刚刚创建'
@@ -72,8 +81,12 @@ const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD')
 .cover-actions { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(12, 37, 42, .24); opacity: 0; transition: opacity .2s ease; visibility: hidden; }
 .app-card:hover .cover-actions, .app-card:focus-within .cover-actions { opacity: 1; visibility: visible; }
 .card-body { padding: 15px 16px 13px; }
+.app-meta { display: flex; min-width: 0; align-items: center; gap: 13px; }
+.author-avatar { flex: 0 0 auto; color: #fff; background: #1d9bf0; font-weight: 700; }
+.app-info { min-width: 0; flex: 1; }
 .title-row, .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 h3 { overflow: hidden; margin: 0; color: #142226; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
+.author-name { display: block; overflow: hidden; margin-top: 4px; color: #6f7f82; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 p { overflow: hidden; height: 42px; margin: 8px 0 12px; color: #718083; font-size: 13px; line-height: 21px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .card-footer { color: #99a6a8; font-size: 12px; }
 </style>

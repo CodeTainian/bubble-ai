@@ -42,6 +42,9 @@
               <div v-else class="message-content">{{ item.content }}</div>
               <span v-if="item.pending" class="typing"><i></i><i></i><i></i></span>
             </div>
+            <a-avatar v-if="item.role === 'user'" :size="30" :src="loginUserStore.loginUser.userAvatar" class="avatar user-avatar">
+              {{ loginUserInitial }}
+            </a-avatar>
           </article>
         </div>
         <button v-if="!followingOutput" class="scroll-to-latest" type="button" @click="resumeFollowingOutput">查看最新内容</button>
@@ -153,6 +156,7 @@ const previewUrl = computed(() => `http://localhost:8123/api/static/${app.value.
 const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
+const loginUserInitial = computed(() => (loginUserStore.loginUser.userName || loginUserStore.loginUser.userAccount || '我').slice(0, 1))
 
 type ResizePane = 'conversation' | 'versions'
 const MIN_CONVERSATION_WIDTH = 280
@@ -391,7 +395,7 @@ onBeforeUnmount(() => {
 .resize-handle { position: relative; width: 7px; padding: 0; border: 0; background: #e6ebeb; cursor: col-resize; touch-action: none; }.resize-handle::after { position: absolute; top: 50%; left: 2px; width: 3px; height: 42px; border-radius: 4px; background: #bcc9c9; content: ""; opacity: 0; transform: translateY(-50%); transition: opacity .2s, background .2s; }.resize-handle:hover::after, .resize-handle:focus-visible::after, .resizing .resize-handle::after { background: #24aaa1; opacity: 1; }.resize-handle:focus-visible { outline: 2px solid #24aaa1; outline-offset: -2px; }.resizing { cursor: col-resize; user-select: none; }.resizing iframe { pointer-events: none; }
 .conversation, .preview-pane, .version-bar { background: #fff; }.conversation { position: relative; display: flex; min-height: 0; flex-direction: column; }.message-list { flex: 1; overflow-y: auto; padding: 18px 15px; }
 .welcome { display: flex; gap: 12px; margin-bottom: 20px; padding: 14px; border-radius: 16px; background: #f1fbf9; }.welcome h2 { margin: 0 0 5px; font-size: 16px; }.welcome p { margin: 0; color: #718385; font-size: 12px; line-height: 1.7; }.ai-mark img, .avatar img { width: 30px; height: 30px; }
-.message-row { display: flex; gap: 8px; margin: 14px 0; }.message-row.user { justify-content: flex-end; }.bubble { max-width: 85%; padding: 11px 13px; border-radius: 14px; background: #f4f6f6; }.assistant .bubble { min-width: 0; }.user .bubble { color: #fff; background: #1aa79e; }.message-role { margin-bottom: 5px; color: inherit; font-size: 11px; font-weight: 700; opacity: .72; }.message-content { font-size: 13px; line-height: 1.75; word-break: break-word; }.message-text { white-space: pre-wrap; }
+.message-row { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0; }.message-row.user { justify-content: flex-end; }.avatar { flex: 0 0 auto; }.user-avatar { color: #fff; background: #1d9bf0; font-weight: 700; }.bubble { max-width: 85%; padding: 11px 13px; border-radius: 14px; background: #f4f6f6; }.assistant .bubble { min-width: 0; }.user .bubble { color: #fff; background: #1aa79e; }.message-role { margin-bottom: 5px; color: inherit; font-size: 11px; font-weight: 700; opacity: .72; }.message-content { font-size: 13px; line-height: 1.75; word-break: break-word; }.message-text { white-space: pre-wrap; }
 .code-block { margin: 9px 0; overflow: hidden; border: 1px solid #dde5e5; border-radius: 8px; background: #fff; }.code-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 9px; border-bottom: 1px solid #e6ebeb; color: #7b898b; background: #f8fafa; font-size: 11px; text-transform: lowercase; }.streaming-label { color: #199e96; }.code-block pre { max-height: 340px; margin: 0; overflow: auto; padding: 10px; background: #fff; }.code-block code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 11px; line-height: 1.65; white-space: pre; }
 .typing i { display: inline-block; width: 5px; height: 5px; margin: 9px 3px 0 0; border-radius: 50%; background: #74c7bd; animation: pulse 1s infinite alternate; }.typing i:nth-child(2) { animation-delay: .2s; }.typing i:nth-child(3) { animation-delay: .4s; } @keyframes pulse { to { opacity: .25; transform: translateY(-3px); } }
 .scroll-to-latest { position: absolute; bottom: 128px; left: 50%; z-index: 1; padding: 7px 13px; border: 1px solid #bfe2de; border-radius: 16px; color: #168f88; background: rgba(255,255,255,.96); box-shadow: 0 4px 14px rgba(29,90,94,.12); cursor: pointer; font-size: 12px; transform: translateX(-50%); }.scroll-to-latest:hover { border-color: #24aaa1; background: #f4fbfa; }
