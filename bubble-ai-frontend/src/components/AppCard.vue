@@ -48,6 +48,7 @@ import dayjs from 'dayjs'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { APP_DEPLOY_BASE_URL } from '@/config/env'
 
 const props = defineProps<{ app: API.AppVO; editable?: boolean; featured?: boolean; ownerOnly?: boolean }>()
 defineEmits<{ edit: [app: API.AppVO]; delete: [app: API.AppVO] }>()
@@ -59,7 +60,7 @@ const canOpenChat = computed(() => !props.ownerOnly || isOwner.value)
 const chatPermissionTip = computed(() => props.ownerOnly && !isOwner.value ? '无法在别人的作品下对话哦~' : '')
 const authorInitial = computed(() => (props.app.user?.userName || props.app.user?.userAccount || '我').slice(0, 1))
 const openApp = () => canOpenChat.value && props.app.id && router.push(`/app/chat/${props.app.id}`)
-const openDeployedApp = () => props.app.deployKey && window.open(`http://localhost:8080/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
+const openDeployedApp = () => props.app.deployKey && window.open(`${APP_DEPLOY_BASE_URL}/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
 const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD') : '刚刚创建'
 </script>
 

@@ -121,6 +121,7 @@ import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
 import { deployApp, getAppVoById } from '@/api/appController'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { APP_PREVIEW_BASE_URL } from '@/config/env'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string; pending?: boolean }
 type MessageBlock =
@@ -152,7 +153,7 @@ let activeAssistantIndex: number | undefined
 let typewriterTimer: number | undefined
 let typewriterQueue = ''
 let streamEnded = false
-const previewUrl = computed(() => `http://localhost:8123/api/static/${app.value.codeGenType || 'html'}_${id}/`)
+const previewUrl = computed(() => `${APP_PREVIEW_BASE_URL}/${app.value.codeGenType || 'html'}_${id}/`)
 const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')

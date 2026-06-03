@@ -19,6 +19,7 @@ const router = createRouter({
       path: '/user/login',
       name: '用户登录',
       component: UserLoginPage,
+      meta: { fullBleed: true },
     },
     {
       path: '/user/register',

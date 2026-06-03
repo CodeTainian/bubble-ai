@@ -1,15 +1,16 @@
 <template>
   <div class="userManagePage">
+    <div class="page-title"><h2>用户管理</h2><p>管理平台用户、角色与账号状态</p></div>
     <!-- 搜索表单 -->
-    <a-form layout="inline" :model="searchParams" @finish="doSearch">
+    <a-form class="search-panel" layout="inline" :model="searchParams" @finish="doSearch">
       <a-form-item label="账号">
-        <a-input v-model:value="searchParams.userAccount" placeholder="输入账号" />
+        <a-input v-model:value="searchParams.userAccount" placeholder="输入账号" size="large" />
       </a-form-item>
       <a-form-item label="用户名">
-        <a-input v-model:value="searchParams.userName" placeholder="输入用户名" />
+        <a-input v-model:value="searchParams.userName" placeholder="输入用户名" size="large" />
       </a-form-item>
-      <a-form-item>
-        <a-button type="primary" html-type="submit">搜索</a-button>
+      <a-form-item class="search-actions">
+        <a-button type="primary" html-type="submit" size="large"><SearchOutlined /> 搜索</a-button>
       </a-form-item>
     </a-form>
     <a-divider />
@@ -52,7 +53,7 @@
   </div>
 </template>
 <script lang="ts" setup>
-import { SmileOutlined } from '@ant-design/icons-vue'
+import { SearchOutlined, SmileOutlined } from '@ant-design/icons-vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { deleteUser, listUserVoByPage } from '@/api/userController.ts'
 import { message } from 'ant-design-vue'
@@ -150,3 +151,44 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+.userManagePage { min-width: 0; }
+.page-title h2 { margin-bottom: 5px; font-size: 26px; }.page-title p { margin-bottom: 18px; color: #8a999b; }
+.search-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 26px;
+  border: 1px solid #edf1f4;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fbfefe, #f7fbfb);
+}
+
+.search-panel :deep(.ant-form-item-label > label) {
+  color: #435154;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 40px;
+  white-space: nowrap;
+}
+
+.search-panel .search-actions {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 720px) {
+  .search-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .search-panel .search-actions {
+    width: 100%;
+  }
+  .search-panel .search-actions {
+    margin-left: 0;
+  }
+
+}
+</style>

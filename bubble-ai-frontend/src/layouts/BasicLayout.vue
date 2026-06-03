@@ -4,7 +4,7 @@
     <GlobalHeader v-if="!route.meta.fullscreen" />
 
     <!-- 主要内容区域 -->
-    <a-layout-content class="main-content" :class="{ 'fullscreen-content': route.meta.fullscreen }">
+    <a-layout-content class="main-content" :class="{ 'fullscreen-content': route.meta.fullscreen, 'full-bleed-content': route.meta.fullBleed }">
       <router-view />
     </a-layout-content>
 
@@ -44,5 +44,13 @@ const route = useRoute()
   width: 100%;
   padding: 0;
   margin: 0;
+}
+
+.full-bleed-content {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  background: transparent;
 }
 </style>
