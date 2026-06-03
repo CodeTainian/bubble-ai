@@ -19,5 +19,8 @@ public interface UserConstant {
      */
     String ADMIN_ROLE = "admin";
 
-    // endregion
+    /**
+     * user avatar link constant
+     */
+    String USER_ACCOUNT_AVATAR = "https://api.dicebear.com/9.x/adventurer/svg?seed=";
 }

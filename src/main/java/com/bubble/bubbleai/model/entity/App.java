@@ -44,6 +44,7 @@ public class App implements Serializable {
     /**
      * 应用封面
      */
+    @Column("cover")
     private String cover;
 
     /**

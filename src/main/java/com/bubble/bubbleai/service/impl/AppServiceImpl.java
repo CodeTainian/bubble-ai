@@ -6,6 +6,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
+import com.bubble.bubbleai.constant.CaptureConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
@@ -17,11 +18,13 @@ import com.bubble.bubbleai.model.vo.AppVO;
 import com.bubble.bubbleai.mapper.AppMapper;
 import com.bubble.bubbleai.model.vo.UserVO;
 import com.bubble.bubbleai.service.AppService;
+import com.bubble.bubbleai.service.ScreenshotService;
 import com.bubble.bubbleai.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -33,6 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -40,6 +44,7 @@ import java.util.stream.Collectors;
  *
  * @author  <a href="https://github.com/liyupi">Coder-Ashely</a>
  */
+@Slf4j
 @Service
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
@@ -47,6 +52,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private UserService userService;
     @Autowired
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+    @Autowired
+    private ScreenshotService screenshotService;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -147,7 +154,19 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的应用生成类型");
         }
         //5.调用AI生成代码
-       return aiCodeGeneratorFacade.generateAndSaveCodeStream(message,codeGenTypeEnum,appId);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+
+        //Async generate the app's cover
+        return codeStream.doOnComplete(()->{
+            CompletableFuture.runAsync(()->{
+                try {
+                    generateAppCover(appId, codeGenType);
+                }catch (Exception e){
+                    log.error("generate app's cover failed = {}",appId,e);
+                }
+            });
+        });
+
     }
 
     @Override
@@ -195,6 +214,35 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
        // return AppConstant.CODE_DEPLOY_HOST + File.separator + deployKey;
         return String.format("%s/%s/",AppConstant.CODE_DEPLOY_HOST,deployKey);
 
+    }
+
+    public void generateAppCover(Long appId, String codeGenType) {
+        // 1. spell the website index name that Ai generated
+        String sourceDirName = codeGenType + "_" + appId;
+        // 2. 拼接可以被浏览器访问的网站首页 URL
+        String previewUrl = String.format("%s/%s/", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
+        // eg："http://localhost:8123/api/static/";
+        // 3. spell the cover image file name
+        String coverFileName = sourceDirName + ".png";
+        // 4. spell the ture cover image file name that save into the location
+        String coverSavePath = CaptureConstant.CAPTURE_OUTPUT_COVER
+                + File.separator
+                + coverFileName;
+        // eg：
+        // /Users/codergu/myProject/bubble-ai/tmp/output_covers/html_123.png
+        // 5. call screenshot service
+        screenshotService.captureHomePage(previewUrl, coverSavePath);
+        // 6.  spell the cover URL that the nginx service can be visited
+        String coverUrl = CaptureConstant.CAPTURE_HOST
+                + "/output_covers/"
+                + coverFileName;
+        // eg：
+        // http://localhost:8080/output_covers/html_123.png
+        // 7. update the datebase
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setCover(coverUrl);
+        this.updateById(updateApp);
     }
 }
 

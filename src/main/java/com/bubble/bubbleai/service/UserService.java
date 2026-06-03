@@ -34,6 +34,13 @@ public interface UserService extends IService<User> {
     String getEncryptPassword(String userPassword);
 
     /**
+     * re-hash userAccount to generate an Encrypted Account for user Avatar；
+     * @param userAccount account；
+     * @return Encrypted UserAccount
+     */
+    String getDefaultAvatar(String userAccount);
+
+    /**
      * 获取脱敏的已登录用户信息
      * @return 脱敏后的用户
      */

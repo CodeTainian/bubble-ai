@@ -2,6 +2,7 @@ package com.bubble.bubbleai.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.bubble.bubbleai.constant.UserConstant;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.model.dto.user.UserQueryRequest;
@@ -64,6 +65,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         user.setUserPassword(encryptPassword);
         user.setUserRole(UserRoleEnum.USER.getValue());
         user.setUserName("无名");
+        user.setUserAvatar(getDefaultAvatar(userAccount));
         boolean saveResult = this.save(user);
         if(!saveResult){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"注册失败，数据库错误");
@@ -190,5 +192,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         final String salt="Ashen";
         return DigestUtils.md5DigestAsHex((salt+userPassword).getBytes());
     }
+
+    @Override
+    public String getDefaultAvatar(String userAccount) {
+        String seed = DigestUtils.md5DigestAsHex(userAccount.getBytes());
+        return UserConstant.USER_ACCOUNT_AVATAR + seed;
+    }
+
 
 }

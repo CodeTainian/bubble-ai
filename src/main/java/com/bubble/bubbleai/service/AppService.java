@@ -64,6 +64,12 @@ public interface AppService extends IService<App> {
      */
     String deployApp(Long appId,User loginUser);
 
+    /**
+     * generate app cover
+     * @param appId;
+     * @param codeGenType;
+     */
+    void generateAppCover(Long appId, String codeGenType);
 
 }
 

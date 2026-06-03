@@ -83,8 +83,8 @@ public class AiCodeGeneratorFacade {
 
     /**
      * 通用流式代码处理方式
-     * @param codeStream 代码刘留
-     * @param codeGenTypeEnum 代码生成类型
+     * @param codeStream；
+     * @param codeGenTypeEnum；
      * @return 流式响应
      */
     private Flux<String> processCodeStream(Flux<String> codeStream,CodeGenTypeEnum codeGenTypeEnum,Long appId) throws BusinessException {
