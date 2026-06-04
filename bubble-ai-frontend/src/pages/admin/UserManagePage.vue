@@ -57,7 +57,7 @@
             </a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'createTime'">
-            <span class="muted">{{ formatDate(record.createTime) }}</span>
+            <span class="muted">{{ formatDate(record.createTime, 'YYYY-MM-DD HH:mm') }}</span>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-button danger type="link" class="delete-action" @click="doDelete(record.id)">删除</a-button>
@@ -72,7 +72,7 @@ import { FilterOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icon
 import { computed, onMounted, reactive, ref } from 'vue'
 import { deleteUser, listUserVoByPage } from '@/api/userController.ts'
 import { message } from 'ant-design-vue'
-import dayjs from 'dayjs'
+import { formatDate } from '@/utils/date'
 
 const columns = [
   {
@@ -116,31 +116,24 @@ const columns = [
     width: 100,
   },
 ]
-//数据
 const data = ref<API.UserVO[]>([])
 const total = ref(0)
-//搜素条件
 const searchParams = reactive<API.UserQueryRequest>({
   pageNum: 1,
   pageSize: 3,
 })
-//分页参数
-const pagination = computed(() => {
-  return{
-    current: searchParams.pageNum??1,
-    pageSize: searchParams.pageSize?? 3,
-    total: total.value,
-    showSizeChanger: true,
-    showTotal: (total:number) => `共${total}条`
-  }
-})
-//用户切换页号和页面大小，更新searcParam参数，并出发搜索
+const pagination = computed(() => ({
+  current: searchParams.pageNum ?? 1,
+  pageSize: searchParams.pageSize ?? 3,
+  total: total.value,
+  showSizeChanger: true,
+  showTotal: (total: number) => `共${total}条`,
+}))
 const doTableChange = (page: { current?: number; pageSize?: number }) => {
   searchParams.pageNum = page.current
-  searchParams.pageSize= page.pageSize
-  fetchData();
+  searchParams.pageSize = page.pageSize
+  fetchData()
 }
-//获取数据
 const fetchData = async () => {
   const res = await listUserVoByPage({
     ...searchParams,
@@ -152,9 +145,8 @@ const fetchData = async () => {
     message.error('获取数据失败' + res.data.message)
   }
 }
-//搜索
 const doSearch = () => {
-  searchParams.pageNum=1
+  searchParams.pageNum = 1
   fetchData()
 }
 const resetSearch = () => {
@@ -163,19 +155,17 @@ const resetSearch = () => {
   searchParams.pageNum = 1
   fetchData()
 }
-const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '-'
 const getUserInitial = (user: API.UserVO) => (user.userName || user.userAccount || 'U').slice(0, 1)
-//删除
-const doDelete =async (id:string) =>{
-  if (!id){
+const doDelete = async (id: string) => {
+  if (!id) {
     return
   }
-const res = await deleteUser({id})
+  const res = await deleteUser({ id })
   if (res.data.code === 0) {
-    message.success("删除成功")
-    fetchData();
-  }else {
-    message.error("删除失败"+res.data.message)
+    message.success('删除成功')
+    fetchData()
+  } else {
+    message.error('删除失败' + res.data.message)
   }
 }
 onMounted(() => {
@@ -184,99 +174,9 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-page { min-width: 0; color: #17212b; font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-.page-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
-.page-title h2 { margin: 0 0 7px; color: #111827; font-size: 28px; font-weight: 850; letter-spacing: -.3px; }
-.page-title p { margin: 0; color: #8a96a8; font-size: 14px; }
-.muted { color: #8d99a8; }
-.mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; }
-.filter-card,
-.table-card {
-  overflow: hidden;
-  border: 1px solid #edf0f5;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, .045);
-}
-.filter-card { margin-bottom: 22px; }
-.filter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 22px;
-  border-bottom: 1px solid #f0f3f7;
-  background: linear-gradient(180deg, #fff, #fbfcfe);
-}
-.filter-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1f2a37;
-  font-size: 15px;
-  font-weight: 750;
-}
-.filter-head :deep(.ant-btn) {
-  height: 38px;
-  border-radius: 999px;
-  padding: 0 18px;
-  font-weight: 700;
-}
-.filter-head :deep(.ant-btn-primary) {
-  border-color: #1677ff;
-  background: #1677ff;
-  box-shadow: 0 10px 22px rgba(22, 119, 255, .18);
-}
 .filter-grid {
-  display: grid;
   grid-template-columns: repeat(2, minmax(240px, 320px));
-  gap: 16px;
-  padding: 20px 22px 22px;
 }
-.filter-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.filter-field label {
-  color: #5f6b7a;
-  font-size: 13px;
-  font-weight: 700;
-}
-.filter-field :deep(.ant-input-affix-wrapper),
-.filter-field :deep(.ant-input) {
-  height: 40px;
-  border-color: #e5eaf1;
-  border-radius: 12px;
-  background: #fbfcfe;
-}
-.filter-field :deep(.ant-input-affix-wrapper) {
-  display: flex;
-  align-items: center;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-.filter-field :deep(.ant-input),
-.filter-field :deep(.ant-input-affix-wrapper > input.ant-input) {
-  height: 38px;
-  line-height: 38px;
-}
-.table-card :deep(.ant-table-thead > tr > th) {
-  border-bottom: 1px solid #edf0f5;
-  color: #5d6b7c;
-  background: #f8fafc;
-  font-size: 13px;
-  font-weight: 750;
-}
-.table-card :deep(.ant-table-tbody > tr > td) {
-  height: 70px;
-  border-bottom: 1px solid #f1f4f8;
-  color: #1f2937;
-}
-.table-card :deep(.ant-table-tbody > tr:hover > td) {
-  background: #f7fbff;
-}
-.name-cell { color: #111827; font-weight: 750; }
 .user-avatar { color: #fff; background: linear-gradient(135deg, #35d7c1, #4d8dff); font-weight: 800; }
 .admin-tag,
 .user-tag {
@@ -290,9 +190,6 @@ onMounted(() => {
 .delete-action {
   color: #ee6b6e;
   font-weight: 650;
-}
-.table-card :deep(.ant-pagination) {
-  margin: 18px 22px;
 }
 @media (max-width: 720px) {
   .filter-head {

@@ -1,14 +1,11 @@
 <template>
   <a-layout class="basic-layout" :class="{ 'fullscreen-layout': route.meta.fullscreen }">
-    <!-- 顶部导航栏 -->
     <GlobalHeader v-if="!route.meta.fullscreen" />
 
-    <!-- 主要内容区域 -->
     <a-layout-content class="main-content" :class="{ 'fullscreen-content': route.meta.fullscreen, 'full-bleed-content': route.meta.fullBleed }">
       <router-view />
     </a-layout-content>
 
-    <!-- 底部版权信息 -->
     <GlobalFooter v-if="!route.meta.fullscreen" />
   </a-layout>
 </template>

@@ -100,8 +100,7 @@
         <button class="version-card active">
           <span>v1</span>
           <div class="version-thumb">
-            <img v-if="versionCoverUrl" :src="versionCoverUrl" alt="应用封面" />
-            <img v-else src="@/assets/logo.svg" alt="" class="fallback-logo" />
+            <AppCover :cover="app.cover" :refresh-key="versionCoverRefreshKey" variant="thumb" />
           </div>
         </button>
       </aside>
@@ -120,6 +119,7 @@ import javascript from 'highlight.js/lib/languages/javascript'
 import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
 import { deployApp, getAppVoById } from '@/api/appController'
+import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_PREVIEW_BASE_URL } from '@/config/env'
 
@@ -156,12 +156,6 @@ let typewriterQueue = ''
 let streamEnded = false
 let coverSyncId = 0
 const previewUrl = computed(() => `${APP_PREVIEW_BASE_URL}/${app.value.codeGenType || 'html'}_${id}/`)
-const versionCoverUrl = computed(() => {
-  if (!app.value.cover) return ''
-  if (!versionCoverRefreshKey.value) return app.value.cover
-  const separator = app.value.cover.includes('?') ? '&' : '?'
-  return `${app.value.cover}${separator}t=${versionCoverRefreshKey.value}`
-})
 const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
@@ -433,5 +427,5 @@ onBeforeUnmount(() => {
 .scroll-to-latest { position: absolute; bottom: 128px; left: 50%; z-index: 1; padding: 7px 13px; border: 1px solid #bfe2de; border-radius: 16px; color: #168f88; background: rgba(255,255,255,.96); box-shadow: 0 4px 14px rgba(29,90,94,.12); cursor: pointer; font-size: 12px; transform: translateX(-50%); }.scroll-to-latest:hover { border-color: #24aaa1; background: #f4fbfa; }
 .composer-wrap { padding: 12px; }.composer { padding: 9px 10px; border: 1px solid #e1e8e8; border-radius: 17px; background: #fff; box-shadow: 0 7px 24px rgba(29,90,94,.09); }.composer textarea { resize: none; }.composer-input.disabled { cursor: not-allowed; }.composer-footer, .preview-toolbar { display: flex; align-items: center; justify-content: space-between; }.composer-footer span { color: #a0abad; font-size: 12px; }
 .preview-pane { display: flex; min-width: 0; flex-direction: column; }.preview-toolbar { height: 46px; padding: 0 12px; border-bottom: 1px solid #ebeeee; color: #657375; font-size: 13px; }.url { overflow: hidden; max-width: 55%; color: #a1adae; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.preview-stage { flex: 1; padding: 12px; background: #f5f7f7; }.preview-stage iframe { width: 100%; height: 100%; border: 1px solid #e7eaea; border-radius: 9px; background: #fff; }.empty-preview { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; text-align: center; }.preview-illustration { display: grid; width: 76px; height: 76px; place-items: center; border-radius: 24px; color: #18a69c; background: #e7f7f5; font-size: 28px; }.empty-preview h2 { margin: 18px 0 5px; }.empty-preview p { max-width: 360px; color: #98a5a6; line-height: 1.7; }
-.version-bar { padding: 15px 10px; }.version-bar h3 { margin: 0 0 12px; font-size: 15px; }.version-card { width: 100%; padding: 7px; border: 1px solid #18aaa0; border-radius: 9px; color: #138f88; background: #f4fbfa; text-align: left; cursor: pointer; }.version-thumb { display: grid; height: 55px; margin-top: 6px; place-items: center; overflow: hidden; border-radius: 4px; background: #daf1ef; }.version-thumb img { width: 100%; height: 100%; object-fit: cover; }.version-thumb .fallback-logo { width: 35px; height: 35px; }
+.version-bar { padding: 15px 10px; }.version-bar h3 { margin: 0 0 12px; font-size: 15px; }.version-card { width: 100%; padding: 7px; border: 1px solid #18aaa0; border-radius: 9px; color: #138f88; background: #f4fbfa; text-align: left; cursor: pointer; }.version-thumb { margin-top: 6px; }
 </style>

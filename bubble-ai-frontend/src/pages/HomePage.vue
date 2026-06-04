@@ -28,47 +28,40 @@
       </div>
     </section>
 
-    <section class="showcase">
-      <div class="section-heading">
-        <div><span>MY CREATIONS</span><h2>我的应用</h2></div>
-        <a-input-search v-model:value="myParams.appName" allow-clear placeholder="搜索我的应用" @search="searchMine" />
-      </div>
-      <a-spin :spinning="loadingMine">
-        <div v-if="myApps.length" class="card-grid">
-          <AppCard v-for="item in myApps" :key="item.id" :app="item" editable @edit="editMine" @delete="removeMine" />
-        </div>
-        <a-empty v-else description="暂时还没有应用，先用一句话创造一个吧" />
-      </a-spin>
-      <a-pagination
-        v-if="myTotal > myParams.pageSize!"
-        v-model:current="myParams.pageNum"
-        :page-size="myParams.pageSize"
-        :total="myTotal"
-        hide-on-single-page
-        @change="fetchMine"
-      />
-    </section>
+    <AppShowcaseSection
+      v-model:search-value="myParams.appName"
+      :apps="myApps"
+      editable
+      empty-description="暂时还没有应用，先用一句话创造一个吧"
+      eyebrow="MY CREATIONS"
+      :loading="loadingMine"
+      :page-num="myParams.pageNum || 1"
+      :page-size="myParams.pageSize || 6"
+      search-placeholder="搜索我的应用"
+      title="我的应用"
+      :total="myTotal"
+      @delete="removeMine"
+      @edit="editMine"
+      @page-change="changeMinePage"
+      @search="searchMine"
+    />
 
-    <section class="showcase featured">
-      <div class="section-heading">
-        <div><span>CURATED IDEAS</span><h2>精选应用</h2></div>
-        <a-input-search v-model:value="goodParams.appName" allow-clear placeholder="搜索精选应用" @search="searchGood" />
-      </div>
-      <a-spin :spinning="loadingGood">
-        <div v-if="goodApps.length" class="card-grid">
-          <AppCard v-for="item in goodApps" :key="item.id" :app="item" featured owner-only />
-        </div>
-        <a-empty v-else description="精选应用正在赶来的路上" />
-      </a-spin>
-      <a-pagination
-        v-if="goodTotal > goodParams.pageSize!"
-        v-model:current="goodParams.pageNum"
-        :page-size="goodParams.pageSize"
-        :total="goodTotal"
-        hide-on-single-page
-        @change="fetchGood"
-      />
-    </section>
+    <AppShowcaseSection
+      v-model:search-value="goodParams.appName"
+      :apps="goodApps"
+      empty-description="精选应用正在赶来的路上"
+      eyebrow="CURATED IDEAS"
+      featured
+      :loading="loadingGood"
+      owner-only
+      :page-num="goodParams.pageNum || 1"
+      :page-size="goodParams.pageSize || 6"
+      search-placeholder="搜索精选应用"
+      title="精选应用"
+      :total="goodTotal"
+      @page-change="changeGoodPage"
+      @search="searchGood"
+    />
   </div>
 </template>
 
@@ -76,9 +69,10 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowUpOutlined, BulbOutlined } from '@ant-design/icons-vue'
-import { Modal, message } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import { addApp, deleteApp, listGoodAppVoByPage, listMyAppByPage } from '@/api/appController'
-import AppCard from '@/components/AppCard.vue'
+import AppShowcaseSection from '@/components/AppShowcaseSection.vue'
+import { confirmDeleteApp } from '@/utils/app'
 
 const router = useRouter()
 const prompt = ref('')
@@ -141,17 +135,22 @@ const fetchGood = async () => {
 }
 const searchMine = () => { myParams.pageNum = 1; fetchMine() }
 const searchGood = () => { goodParams.pageNum = 1; fetchGood() }
+const changeMinePage = (page: number, pageSize: number) => {
+  myParams.pageNum = page
+  myParams.pageSize = pageSize
+  fetchMine()
+}
+const changeGoodPage = (page: number, pageSize: number) => {
+  goodParams.pageNum = page
+  goodParams.pageSize = pageSize
+  fetchGood()
+}
 const editMine = (app: API.AppVO) => app.id && router.push(`/app/edit/${app.id}`)
 const removeMine = (app: API.AppVO) => {
-  Modal.confirm({
-    title: `确认删除“${app.appName || '未命名应用'}”？`,
-    content: '删除后无法恢复。',
-    okType: 'danger',
-    async onOk() {
-      const res = await deleteApp({ id: app.id })
-      if (res.data.code === 0) { message.success('删除成功'); fetchMine() }
-      else message.error('删除失败：' + res.data.message)
-    },
+  confirmDeleteApp(app, async () => {
+    const res = await deleteApp({ id: app.id })
+    if (res.data.code === 0) { message.success('删除成功'); fetchMine() }
+    else message.error('删除失败：' + res.data.message)
   })
 }
 onMounted(() => { fetchMine(); fetchGood() })
@@ -161,24 +160,17 @@ onMounted(() => { fetchMine(); fetchGood() })
 .home-page { position: relative; min-height: calc(100vh - 64px); overflow: hidden; padding: 86px 24px 56px; background: radial-gradient(circle at 18% 6%, rgba(255,255,255,.68), transparent 26%), radial-gradient(circle at 76% 18%, rgba(255,255,255,.22), transparent 24%), linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(218,252,248,.72) 34%, rgba(116,210,246,.42) 76%, rgba(102,166,255,.4) 100%); }
 .home-page::before { position: absolute; inset: 0; background: radial-gradient(circle at 70% 48%, rgba(37,231,218,.2), transparent 24%), radial-gradient(circle at 36% 76%, rgba(102,166,255,.24), transparent 30%); content: ""; pointer-events: none; }
 .hero { position: relative; z-index: 1; max-width: 1100px; min-height: 640px; margin: 0 auto; padding: 70px 24px 36px; text-align: center; }
-.hero-copy .eyebrow, .section-heading span { color: #0eaaa0; font-size: 12px; font-weight: 900; letter-spacing: 7px; }
+.hero-copy .eyebrow { color: #0eaaa0; font-size: 12px; font-weight: 900; letter-spacing: 7px; }
 h1 { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 18px 0 12px; color: #101d28; font-family: "YouSheBiaoTiHei", "Alimama ShuHeiTi", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; font-size: clamp(38px, 4.7vw, 66px); font-weight: 900; letter-spacing: 1px; line-height: 1.08; text-shadow: 0 10px 34px rgba(17, 54, 76, .1); }
 h1 .headline-text { background: linear-gradient(110deg, #101d28 8%, #142d4f 48%, #0aaea4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 h1 img { width: clamp(46px, 4.2vw, 58px); height: clamp(46px, 4.2vw, 58px); border-radius: 16px; box-shadow: 0 18px 36px rgba(18, 80, 152, .18); }
 .hero-copy p { color: #687981; font-size: 20px; font-weight: 700; letter-spacing: 6px; }
 .prompt-panel { max-width: 920px; margin: 72px auto 18px; padding: 18px 18px 16px; border: 1px solid rgba(255,255,255,.7); border-radius: 28px; background: rgba(255, 255, 255, .82); box-shadow: 0 28px 80px rgba(24, 108, 151, .18); text-align: left; backdrop-filter: blur(16px); }
 .prompt-panel textarea { color: #223238; font-size: 18px; line-height: 1.8; resize: none; }
-.prompt-actions, .section-heading { display: flex; align-items: center; justify-content: space-between; }
+.prompt-actions { display: flex; align-items: center; justify-content: space-between; }
 .suggestion-title { color: #9ba5a6; font-size: 13px; }
 .suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 24px auto 0; }
 .suggestion-card { min-height: 0; padding: 9px 18px; border: 1px solid rgba(255,255,255,.72); border-radius: 14px; color: #5d7178; background: rgba(255,255,255,.78); box-shadow: 0 10px 28px rgba(45, 123, 142, .08); cursor: pointer; font-size: 14px; font-weight: 700; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease; backdrop-filter: blur(8px); }
 .suggestion-card:hover { border-color: rgba(28, 175, 166, .52); color: #10212a; box-shadow: 0 16px 38px rgba(45, 123, 142, .14); transform: translateY(-2px); }
-.showcase { position: relative; z-index: 1; max-width: 1220px; margin: 52px auto 0; padding: 42px 42px 34px; border: 1px solid rgba(255,255,255,.54); border-radius: 28px; background: rgba(255,255,255,.9); box-shadow: 0 26px 70px rgba(31, 111, 148, .12); backdrop-filter: blur(14px); }
-.featured { padding-bottom: 70px; }
-.section-heading { margin-bottom: 24px; }
-.section-heading h2 { margin: 5px 0 0; color: #15272b; font-size: 30px; }
-.section-heading .ant-input-search { width: 220px; }
-.card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
-.ant-pagination { margin-top: 25px; text-align: center; }
-@media (max-width: 800px) { .home-page { padding: 48px 14px 42px; } .hero { min-height: auto; padding: 48px 4px 36px; } h1 { flex-wrap: wrap; letter-spacing: 1px; } .hero-copy p { letter-spacing: 2px; } .prompt-panel { margin-top: 42px; } .showcase { padding: 30px 18px 16px; } .card-grid { grid-template-columns: 1fr; } .section-heading { align-items: flex-end; } .section-heading .ant-input-search { width: 160px; } }
+@media (max-width: 800px) { .home-page { padding: 48px 14px 42px; } .hero { min-height: auto; padding: 48px 4px 36px; } h1 { flex-wrap: wrap; letter-spacing: 1px; } .hero-copy p { letter-spacing: 2px; } .prompt-panel { margin-top: 42px; } }
 </style>

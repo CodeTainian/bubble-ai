@@ -43,7 +43,7 @@
             <span class="name-cell">{{ record.appName || '未命名应用' }}</span>
           </template>
           <template v-else-if="column.dataIndex === 'cover'">
-            <a-image v-if="record.cover" :src="record.cover" :width="92" class="cover-preview" />
+            <AppCover v-if="record.cover" :cover="record.cover" :alt="record.appName" preview variant="table" />
             <span v-else class="muted">暂无封面</span>
           </template>
           <template v-else-if="column.dataIndex === 'codeGenType'">
@@ -55,7 +55,7 @@
           <template v-else-if="column.dataIndex === 'priority'">
             <a-tag :class="record.priority === 99 ? 'featured-tag' : 'plain-tag'">{{ record.priority === 99 ? '精选' : record.priority ?? 0 }}</a-tag>
           </template>
-          <template v-else-if="column.dataIndex === 'createTime'">{{ formatDate(record.createTime) }}</template>
+          <template v-else-if="column.dataIndex === 'createTime'">{{ formatDate(record.createTime, 'YYYY-MM-DD HH:mm') }}</template>
           <template v-else-if="column.key === 'action'">
             <a-space class="action-group">
               <a-button type="link" @click="edit(record.id)">编辑</a-button>
@@ -72,10 +72,12 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Modal, message } from 'ant-design-vue'
+import { message } from 'ant-design-vue'
 import { FilterOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
-import dayjs from 'dayjs'
+import AppCover from '@/components/AppCover.vue'
 import { deleteAppByAdmin, listAppVoByPageByAdmin, updateAppByAdmin } from '@/api/appController'
+import { confirmDeleteApp } from '@/utils/app'
+import { formatDate } from '@/utils/date'
 
 const router = useRouter()
 const data = ref<API.AppVO[]>([])
@@ -108,120 +110,21 @@ const feature = async (app: API.AppVO) => {
   const res = await updateAppByAdmin({ id: app.id, priority: 99 })
   if (res.data.code === 0) { message.success('已设为精选应用'); fetchData() } else message.error('操作失败：' + res.data.message)
 }
-const remove = (app: API.AppVO) => Modal.confirm({ title: `确认删除“${app.appName || '未命名应用'}”？`, okType: 'danger', async onOk() { const res = await deleteAppByAdmin({ id: app.id }); if (res.data.code === 0) { message.success('删除成功'); fetchData() } else message.error('删除失败：' + res.data.message) } })
-const formatDate = (value?: string) => value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '-'
+const remove = (app: API.AppVO) => {
+  confirmDeleteApp(app, async () => {
+    const res = await deleteAppByAdmin({ id: app.id })
+    if (res.data.code === 0) { message.success('删除成功'); fetchData() }
+    else message.error('删除失败：' + res.data.message)
+  })
+}
 onMounted(fetchData)
 </script>
 
 <style scoped>
-.admin-page { min-width: 0; color: #17212b; font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
-.page-title { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
-.page-title h2 { margin: 0 0 7px; color: #111827; font-size: 28px; font-weight: 850; letter-spacing: -.3px; }
-.page-title p { margin: 0; color: #8a96a8; font-size: 14px; }
-.muted { color: #9aa6b2; }
-.mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; }
-.filter-card {
-  margin-bottom: 22px;
-  overflow: hidden;
-  border: 1px solid #edf0f5;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 14px 34px rgba(15, 23, 42, .045);
-}
-.filter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 22px;
-  border-bottom: 1px solid #f0f3f7;
-  background: linear-gradient(180deg, #fff, #fbfcfe);
-}
-.filter-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #1f2a37;
-  font-size: 15px;
-  font-weight: 750;
-}
-.filter-head :deep(.ant-btn) {
-  height: 38px;
-  border-radius: 999px;
-  padding: 0 18px;
-  font-weight: 700;
-}
-.filter-head :deep(.ant-btn-primary) {
-  border-color: #1677ff;
-  background: #1677ff;
-  box-shadow: 0 10px 22px rgba(22, 119, 255, .18);
-}
-
 .filter-grid {
-  display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
   align-items: center;
-  padding: 20px 22px 22px;
 }
-.filter-field {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-}
-.filter-field label {
-  color: #5f6b7a;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-.filter-field :deep(.ant-input-affix-wrapper),
-.filter-field :deep(.ant-input) {
-  height: 40px;
-  border-color: #e5eaf1;
-  border-radius: 12px;
-  background: #fbfcfe;
-}
-.filter-field :deep(.ant-input-affix-wrapper) {
-  display: flex;
-  align-items: center;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-.filter-field :deep(.ant-input),
-.filter-field :deep(.ant-input-affix-wrapper > input.ant-input) {
-  height: 38px;
-  line-height: 38px;
-}
-
-.table-card {
-  overflow: hidden;
-  border: 1px solid #edf0f5;
-  border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 16px 42px rgba(15, 23, 42, .05);
-}
-
-.table-card :deep(.ant-table-thead > tr > th) {
-  border-bottom: 1px solid #edf0f5;
-  color: #5d6b7c;
-  background: #f8fafc;
-  font-size: 13px;
-  font-weight: 750;
-}
-.table-card :deep(.ant-table-tbody > tr > td) {
-  height: 70px;
-  border-bottom: 1px solid #f1f4f8;
-  color: #1f2937;
-}
-.table-card :deep(.ant-table-tbody > tr:hover > td) {
-  background: #f7fbff;
-}
-.name-cell { color: #111827; font-weight: 750; }
-.cover-preview :deep(img) { border-radius: 12px; object-fit: cover; }
 .type-tag,
 .plain-tag,
 .featured-tag {
@@ -241,10 +144,6 @@ onMounted(fetchData)
 .action-group :deep(.ant-btn-link.ant-btn-dangerous) {
   color: #ee6b6e;
 }
-.table-card :deep(.ant-pagination) {
-  margin: 18px 22px;
-}
-
 @media (max-width: 900px) {
   .filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
