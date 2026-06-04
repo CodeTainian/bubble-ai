@@ -100,7 +100,7 @@
         <button class="version-card active">
           <span>v1</span>
           <div class="version-thumb">
-            <img v-if="app.cover" :src="app.cover" alt="应用封面" />
+            <img v-if="versionCoverUrl" :src="versionCoverUrl" alt="应用封面" />
             <img v-else src="@/assets/logo.svg" alt="" class="fallback-logo" />
           </div>
         </button>
@@ -144,6 +144,7 @@ const input = ref('')
 const generating = ref(false), deploying = ref(false), previewReady = ref(false)
 const followingOutput = ref(true)
 const previewKey = ref(0)
+const versionCoverRefreshKey = ref(0)
 const messageList = ref<HTMLElement>()
 const workspace = ref<HTMLElement>()
 const conversationWidth = ref(390), versionWidth = ref(116)
@@ -153,7 +154,14 @@ let activeAssistantIndex: number | undefined
 let typewriterTimer: number | undefined
 let typewriterQueue = ''
 let streamEnded = false
+let coverSyncId = 0
 const previewUrl = computed(() => `${APP_PREVIEW_BASE_URL}/${app.value.codeGenType || 'html'}_${id}/`)
+const versionCoverUrl = computed(() => {
+  if (!app.value.cover) return ''
+  if (!versionCoverRefreshKey.value) return app.value.cover
+  const separator = app.value.cover.includes('?') ? '&' : '?'
+  return `${app.value.cover}${separator}t=${versionCoverRefreshKey.value}`
+})
 const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
@@ -169,6 +177,8 @@ const RESIZE_STEP = 16
 const HANDLE_WIDTH = 14
 const TYPEWRITER_INTERVAL = 18
 const AUTO_SCROLL_THRESHOLD = 24
+const COVER_SYNC_RETRY_COUNT = 5
+const COVER_SYNC_RETRY_DELAY = 800
 const SUMMARY_OUTPUT_INSTRUCTION = '生成完成后，请在所有代码块结束后追加“文件结构与说明”和“功能说明”两个总结章节。“文件结构与说明”需要按文件逐项说明，“功能说明”需要使用有序列表概括本次实际实现的功能。总结必须根据本次生成内容动态编写，不要省略，不要使用固定文案。'
 let resizeStartX = 0
 let resizeStartWidth = 0
@@ -229,6 +239,25 @@ const loadApp = async () => {
   if (route.query.auto === '1' && app.value.initPrompt) {
     await router.replace({ path: route.path })
     send(app.value.initPrompt)
+  }
+}
+const sleep = (duration: number) => new Promise((resolve) => window.setTimeout(resolve, duration))
+const syncGeneratedAppInfo = async () => {
+  const currentSyncId = ++coverSyncId
+  const previousCover = app.value.cover
+  for (let attempt = 0; attempt <= COVER_SYNC_RETRY_COUNT; attempt++) {
+    if (attempt) await sleep(COVER_SYNC_RETRY_DELAY)
+    if (currentSyncId !== coverSyncId) return
+    try {
+      const res = await getAppVoById({ id })
+      if (currentSyncId !== coverSyncId) return
+      if (res.data.code !== 0 || !res.data.data) continue
+      app.value = { ...app.value, ...res.data.data }
+      if (res.data.data.cover) versionCoverRefreshKey.value = Date.now()
+      if (res.data.data.cover && res.data.data.cover !== previousCover) return
+    } catch {
+      // 生成结果已经可预览，封面同步失败时保持当前封面，下一次进入页面仍会加载最新数据。
+    }
   }
 }
 const send = (content: string) => {
@@ -355,6 +384,7 @@ const completeGeneration = () => {
   app.value.codeGenType ||= 'html'
   previewReady.value = true
   refreshPreview()
+  void syncGeneratedAppInfo()
   scrollToBottom()
 }
 const sendMessage = () => send(input.value)
@@ -380,6 +410,7 @@ const deploy = async () => {
 }
 onMounted(loadApp)
 onBeforeUnmount(() => {
+  coverSyncId++
   eventSource?.close()
   eventSource = undefined
   resetTypewriter()
