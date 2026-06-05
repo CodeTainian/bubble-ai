@@ -1,0 +1,129 @@
+.admin-page {
+  min-width: 0;
+  color: #17212b;
+  font-family: "Inter", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+.admin-page .page-title {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+.admin-page .page-title h2 {
+  margin: 0 0 7px;
+  color: #111827;
+  font-size: 28px;
+  font-weight: 850;
+  letter-spacing: -.3px;
+}
+.admin-page .page-title p {
+  margin: 0;
+  color: #8a96a8;
+  font-size: 14px;
+}
+.admin-page .muted {
+  color: #8d99a8;
+}
+.admin-page .mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+.admin-page .filter-card,
+.admin-page .table-card {
+  overflow: hidden;
+  border: 1px solid #edf0f5;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .045);
+}
+.admin-page .filter-card {
+  margin-bottom: 22px;
+}
+.admin-page .filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #f0f3f7;
+  background: linear-gradient(180deg, #fff, #fbfcfe);
+}
+.admin-page .filter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1f2a37;
+  font-size: 15px;
+  font-weight: 750;
+}
+.admin-page .filter-head .ant-btn {
+  height: 38px;
+  border-radius: 999px;
+  padding: 0 18px;
+  font-weight: 700;
+}
+.admin-page .filter-head .ant-btn-primary {
+  border-color: #1677ff;
+  background: #1677ff;
+  box-shadow: 0 10px 22px rgba(22, 119, 255, .18);
+}
+.admin-page .filter-grid {
+  display: grid;
+  gap: 16px;
+  padding: 20px 22px 22px;
+}
+.admin-page .filter-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.admin-page .filter-field label {
+  color: #5f6b7a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.admin-page .filter-field .ant-input-affix-wrapper,
+.admin-page .filter-field .ant-input {
+  height: 40px;
+  border-color: #e5eaf1;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+.admin-page .filter-field .ant-input-affix-wrapper {
+  display: flex;
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.admin-page .filter-field .ant-input,
+.admin-page .filter-field .ant-input-affix-wrapper > input.ant-input {
+  height: 38px;
+  line-height: 38px;
+}
+.admin-page .table-card .ant-table-thead > tr > th {
+  border-bottom: 1px solid #edf0f5;
+  color: #5d6b7c;
+  background: #f8fafc;
+  font-size: 13px;
+  font-weight: 750;
+}
+.admin-page .table-card .ant-table-tbody > tr > td {
+  height: 70px;
+  border-bottom: 1px solid #f1f4f8;
+  color: #1f2937;
+}
+.admin-page .table-card .ant-table-tbody > tr:hover > td {
+  background: #f7fbff;
+}
+.admin-page .name-cell {
+  color: #111827;
+  font-weight: 750;
+}
+.admin-page .table-card .ant-pagination {
+  margin: 18px 22px;
+}
