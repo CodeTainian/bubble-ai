@@ -30,7 +30,7 @@ import static com.bubble.bubbleai.constant.UserConstant.USER_LOGIN_STATE;
 /**
  * 用户 服务层实现。
  *
- * @author  <a href="https://github.com/liyupi">Coder-Ashely</a>
+ * @author  <a href="https://github.com/CodeTainian"></a>
  */
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements UserService{

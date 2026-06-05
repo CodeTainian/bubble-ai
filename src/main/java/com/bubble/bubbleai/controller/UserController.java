@@ -8,7 +8,7 @@ import com.bubble.bubbleai.constant.UserConstant;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.exception.ThrowUtils;
-import com.bubble.bubbleai.model.dto.UserRegisterRequest;
+import com.bubble.bubbleai.model.dto.user.UserRegisterRequest;
 import com.bubble.bubbleai.model.dto.user.UserAddRequest;
 import com.bubble.bubbleai.model.dto.user.UserLoginRequest;
 import com.bubble.bubbleai.model.dto.user.UserQueryRequest;
@@ -31,7 +31,7 @@ import java.util.List;
 /**
  * 用户 控制层。
  *
- * @author  <a href="https://github.com/liyupi">Coder-Ashely</a>
+ * @author  <a href="https://github.com/CodeTainian"></a>
  */
 @RestController
 @RequestMapping("/user")

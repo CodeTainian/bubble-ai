@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * 应用 服务层。
  *
- * @author  <a href="https://github.com/liyupi">Coder-Ashely</a>
+ * @author  <a href="https://github.com/CodeTainian"></a>
  */
 public interface AppService extends IService<App> {
 
