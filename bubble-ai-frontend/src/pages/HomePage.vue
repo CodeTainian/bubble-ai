@@ -36,7 +36,7 @@
       eyebrow="MY CREATIONS"
       :loading="loadingMine"
       :page-num="myParams.pageNum || 1"
-      :page-size="myParams.pageSize || 6"
+      :page-size="myParams.pageSize || HOME_SHOWCASE_PAGE_SIZE"
       search-placeholder="搜索我的应用"
       title="我的应用"
       :total="myTotal"
@@ -55,7 +55,7 @@
       :loading="loadingGood"
       owner-only
       :page-num="goodParams.pageNum || 1"
-      :page-size="goodParams.pageSize || 6"
+      :page-size="goodParams.pageSize || HOME_SHOWCASE_PAGE_SIZE"
       search-placeholder="搜索精选应用"
       title="精选应用"
       :total="goodTotal"
@@ -83,8 +83,9 @@ const myApps = ref<API.AppVO[]>([])
 const goodApps = ref<API.AppVO[]>([])
 const myTotal = ref(0)
 const goodTotal = ref(0)
-const myParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: 6 })
-const goodParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: 6 })
+const HOME_SHOWCASE_PAGE_SIZE = 8
+const myParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: HOME_SHOWCASE_PAGE_SIZE })
+const goodParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: HOME_SHOWCASE_PAGE_SIZE })
 const suggestions = [
   {
     title: '企业官网',

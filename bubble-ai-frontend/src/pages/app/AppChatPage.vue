@@ -1,14 +1,32 @@
 <template>
-  <div class="chat-page">
+  <div class="chat-page" :class="{ 'preview-fullscreen': previewFullscreen }">
     <header class="studio-header">
       <RouterLink to="/" class="app-title">
         <img src="@/assets/logo.svg" alt="Bubble AI" />
         <div><strong>{{ app.appName || 'AI 应用工作台' }}</strong><span>Bubble AI Studio</span></div>
       </RouterLink>
-      <div class="header-center"><span class="status-dot" :class="{ active: generating }"></span>{{ generating ? '正在生成应用' : '已同步最新版本' }}</div>
+      <div class="header-center" :style="{ left: previewToolbarLeft }">
+        <div class="preview-actions">
+          <a-tooltip :title="previewFullscreen ? '退出全屏预览' : '全屏预览'">
+            <a-button
+              class="header-icon-button"
+              :disabled="!previewReady"
+              @click="togglePreviewFullscreen"
+            >
+              <FullscreenExitOutlined v-if="previewFullscreen" />
+              <FullscreenOutlined v-else />
+            </a-button>
+          </a-tooltip>
+          <a-tooltip title="刷新预览">
+            <a-button class="header-icon-button" :disabled="!previewReady" @click="refreshPreview">
+              <ReloadOutlined />
+            </a-button>
+          </a-tooltip>
+        </div>
+      </div>
       <a-space>
-        <a-tooltip title="打开生成页面"><a-button :disabled="!previewReady" @click="openPreview"><CodeOutlined /></a-button></a-tooltip>
-        <a-tooltip title="下载 / 打开代码资源"><a-button :disabled="!previewReady" @click="downloadCode"><DownloadOutlined /></a-button></a-tooltip>
+        <a-tooltip title="打开生成页面"><a-button class="header-icon-button" :disabled="!previewReady" @click="openPreview"><CodeOutlined /></a-button></a-tooltip>
+        <a-tooltip title="下载 / 打开代码资源"><a-button class="header-icon-button" :disabled="!previewReady" @click="downloadCode"><DownloadOutlined /></a-button></a-tooltip>
         <a-button type="primary" :loading="deploying" :disabled="!previewReady" @click="deploy"><RocketOutlined /> 部署</a-button>
       </a-space>
     </header>
@@ -71,11 +89,6 @@
       ></button>
 
       <section class="preview-pane">
-        <div class="preview-toolbar">
-          <span><DesktopOutlined /> 网页预览</span>
-          <span class="url">{{ previewUrl }}</span>
-          <a-button type="text" :disabled="!previewReady" @click="refreshPreview"><ReloadOutlined /></a-button>
-        </div>
         <div class="preview-stage">
           <iframe v-if="previewReady" :key="previewKey" :src="previewUrl" title="生成应用预览"></iframe>
           <div v-else class="empty-preview">
@@ -97,12 +110,12 @@
 
       <aside class="version-bar">
         <h3>版本</h3>
-        <button class="version-card active">
+        <div class="version-card active">
           <span>v1</span>
           <div class="version-thumb">
             <AppCover :cover="app.cover" :refresh-key="versionCoverRefreshKey" variant="thumb" />
           </div>
-        </button>
+        </div>
       </aside>
     </main>
   </div>
@@ -112,7 +125,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { ArrowUpOutlined, CodeOutlined, DesktopOutlined, DownloadOutlined, MessageOutlined, ReloadOutlined, RocketOutlined } from '@ant-design/icons-vue'
+import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined } from '@ant-design/icons-vue'
 import hljs from 'highlight.js/lib/core'
 import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -142,12 +155,13 @@ const appLoaded = ref(false)
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const generating = ref(false), deploying = ref(false), previewReady = ref(false)
+const previewFullscreen = ref(false)
 const followingOutput = ref(true)
 const previewKey = ref(0)
 const versionCoverRefreshKey = ref(0)
 const messageList = ref<HTMLElement>()
 const workspace = ref<HTMLElement>()
-const conversationWidth = ref(390), versionWidth = ref(116)
+const conversationWidth = ref(520), versionWidth = ref(132)
 const resizingPane = ref<ResizePane>()
 let eventSource: EventSource | undefined
 let activeAssistantIndex: number | undefined
@@ -162,13 +176,15 @@ const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '�
 const loginUserInitial = computed(() => (loginUserStore.loginUser.userName || loginUserStore.loginUser.userAccount || '我').slice(0, 1))
 
 type ResizePane = 'conversation' | 'versions'
-const MIN_CONVERSATION_WIDTH = 280
-const MAX_CONVERSATION_WIDTH = 680
-const MIN_PREVIEW_WIDTH = 420
-const MIN_VERSION_WIDTH = 92
+const MIN_CONVERSATION_WIDTH = 360
+const MAX_CONVERSATION_WIDTH = 660
+const MIN_PREVIEW_WIDTH = 540
+const MIN_VERSION_WIDTH = 116
 const MAX_VERSION_WIDTH = 280
 const RESIZE_STEP = 16
 const HANDLE_WIDTH = 14
+const PREVIEW_TOOLBAR_SAFE_LEFT = 404
+const PREVIEW_TOOLBAR_OFFSET = 17
 const TYPEWRITER_INTERVAL = 18
 const AUTO_SCROLL_THRESHOLD = 24
 const COVER_SYNC_RETRY_COUNT = 5
@@ -177,6 +193,12 @@ const SUMMARY_OUTPUT_INSTRUCTION = '生成完成后，请在所有代码块结�
 let resizeStartX = 0
 let resizeStartWidth = 0
 
+const previewToolbarLeft = computed(() => {
+  const previewLeft = previewFullscreen.value
+    ? PREVIEW_TOOLBAR_SAFE_LEFT
+    : conversationWidth.value + PREVIEW_TOOLBAR_OFFSET
+  return `${Math.max(PREVIEW_TOOLBAR_SAFE_LEFT, previewLeft)}px`
+})
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max))
 const availablePaneWidth = () => (workspace.value?.clientWidth || 0) - HANDLE_WIDTH - MIN_PREVIEW_WIDTH
 const resizeConversation = (width: number) => {
@@ -384,6 +406,7 @@ const completeGeneration = () => {
 const sendMessage = () => send(input.value)
 const handleEnter = (event: KeyboardEvent) => { if (!event.shiftKey) { event.preventDefault(); sendMessage() } }
 const refreshPreview = () => previewKey.value++
+const togglePreviewFullscreen = () => { if (previewReady.value) previewFullscreen.value = !previewFullscreen.value }
 const openPreview = () => window.open(previewUrl.value, '_blank')
 const downloadCode = () => { window.open(previewUrl.value, '_blank'); message.info('已打开生成资源，可在新页面中查看或保存代码') }
 const deploy = async () => {
@@ -404,6 +427,7 @@ const deploy = async () => {
 }
 onMounted(loadApp)
 onBeforeUnmount(() => {
+  previewFullscreen.value = false
   coverSyncId++
   eventSource?.close()
   eventSource = undefined
@@ -413,19 +437,442 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.chat-page { min-width: 1050px; min-height: 100vh; color: #172326; background: #f3f6f6; }
-.studio-header { display: flex; height: 62px; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #e8ecec; background: #fff; }
-.app-title { display: flex; min-width: 260px; align-items: center; gap: 10px; color: #1e292c; }.app-title img { width: 38px; height: 38px; }.app-title strong, .app-title span { display: block; }.app-title span { color: #a1abad; font-size: 11px; letter-spacing: 1px; }
-.header-center { color: #93a0a1; font-size: 12px; }.status-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #51c5aa; }.status-dot.active { background: #f9b648; box-shadow: 0 0 0 4px rgba(249,182,72,.18); }
-.workspace { display: grid; height: calc(100vh - 62px); background: #e6ebeb; }
-.resize-handle { position: relative; width: 7px; padding: 0; border: 0; background: #e6ebeb; cursor: col-resize; touch-action: none; }.resize-handle::after { position: absolute; top: 50%; left: 2px; width: 3px; height: 42px; border-radius: 4px; background: #bcc9c9; content: ""; opacity: 0; transform: translateY(-50%); transition: opacity .2s, background .2s; }.resize-handle:hover::after, .resize-handle:focus-visible::after, .resizing .resize-handle::after { background: #24aaa1; opacity: 1; }.resize-handle:focus-visible { outline: 2px solid #24aaa1; outline-offset: -2px; }.resizing { cursor: col-resize; user-select: none; }.resizing iframe { pointer-events: none; }
-.conversation, .preview-pane, .version-bar { background: #fff; }.conversation { position: relative; display: flex; min-height: 0; flex-direction: column; }.message-list { flex: 1; overflow-y: auto; padding: 18px 15px; }
-.welcome { display: flex; gap: 12px; margin-bottom: 20px; padding: 14px; border-radius: 16px; background: #f1fbf9; }.welcome h2 { margin: 0 0 5px; font-size: 16px; }.welcome p { margin: 0; color: #718385; font-size: 12px; line-height: 1.7; }.ai-mark img, .avatar img { width: 30px; height: 30px; }
-.message-row { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0; }.message-row.user { justify-content: flex-end; }.avatar { flex: 0 0 auto; }.user-avatar { color: #fff; background: #1d9bf0; font-weight: 700; }.bubble { max-width: 85%; padding: 11px 13px; border-radius: 14px; background: #f4f6f6; }.assistant .bubble { min-width: 0; }.user .bubble { color: #fff; background: #1aa79e; }.message-role { margin-bottom: 5px; color: inherit; font-size: 11px; font-weight: 700; opacity: .72; }.message-content { font-size: 13px; line-height: 1.75; word-break: break-word; }.message-text { white-space: pre-wrap; }
-.code-block { margin: 9px 0; overflow: hidden; border: 1px solid #dde5e5; border-radius: 8px; background: #fff; }.code-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 9px; border-bottom: 1px solid #e6ebeb; color: #7b898b; background: #f8fafa; font-size: 11px; text-transform: lowercase; }.streaming-label { color: #199e96; }.code-block pre { max-height: 340px; margin: 0; overflow: auto; padding: 10px; background: #fff; }.code-block code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 11px; line-height: 1.65; white-space: pre; }
-.typing i { display: inline-block; width: 5px; height: 5px; margin: 9px 3px 0 0; border-radius: 50%; background: #74c7bd; animation: pulse 1s infinite alternate; }.typing i:nth-child(2) { animation-delay: .2s; }.typing i:nth-child(3) { animation-delay: .4s; } @keyframes pulse { to { opacity: .25; transform: translateY(-3px); } }
-.scroll-to-latest { position: absolute; bottom: 128px; left: 50%; z-index: 1; padding: 7px 13px; border: 1px solid #bfe2de; border-radius: 16px; color: #168f88; background: rgba(255,255,255,.96); box-shadow: 0 4px 14px rgba(29,90,94,.12); cursor: pointer; font-size: 12px; transform: translateX(-50%); }.scroll-to-latest:hover { border-color: #24aaa1; background: #f4fbfa; }
-.composer-wrap { padding: 12px; }.composer { padding: 9px 10px; border: 1px solid #e1e8e8; border-radius: 17px; background: #fff; box-shadow: 0 7px 24px rgba(29,90,94,.09); }.composer textarea { resize: none; }.composer-input.disabled { cursor: not-allowed; }.composer-footer, .preview-toolbar { display: flex; align-items: center; justify-content: space-between; }.composer-footer span { color: #a0abad; font-size: 12px; }
-.preview-pane { display: flex; min-width: 0; flex-direction: column; }.preview-toolbar { height: 46px; padding: 0 12px; border-bottom: 1px solid #ebeeee; color: #657375; font-size: 13px; }.url { overflow: hidden; max-width: 55%; color: #a1adae; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.preview-stage { flex: 1; padding: 12px; background: #f5f7f7; }.preview-stage iframe { width: 100%; height: 100%; border: 1px solid #e7eaea; border-radius: 9px; background: #fff; }.empty-preview { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; text-align: center; }.preview-illustration { display: grid; width: 76px; height: 76px; place-items: center; border-radius: 24px; color: #18a69c; background: #e7f7f5; font-size: 28px; }.empty-preview h2 { margin: 18px 0 5px; }.empty-preview p { max-width: 360px; color: #98a5a6; line-height: 1.7; }
-.version-bar { padding: 15px 10px; }.version-bar h3 { margin: 0 0 12px; font-size: 15px; }.version-card { width: 100%; padding: 7px; border: 1px solid #18aaa0; border-radius: 9px; color: #138f88; background: #f4fbfa; text-align: left; cursor: pointer; }.version-thumb { margin-top: 6px; }
+.chat-page {
+  min-width: 1180px;
+  min-height: 100vh;
+  color: #172326;
+  background: #f5f7f9;
+}
+.studio-header {
+  position: relative;
+  display: flex;
+  height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 10px 0 14px;
+  border-bottom: 0;
+  background: #f5f7f9;
+  backdrop-filter: none;
+}
+.app-title {
+  display: flex;
+  flex: 0 0 320px;
+  align-items: center;
+  gap: 12px;
+  color: #1e292c;
+  z-index: 1;
+}
+.app-title img {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(17, 44, 70, .13);
+}
+.app-title strong,
+.app-title span {
+  display: block;
+}
+.app-title strong {
+  max-width: 260px;
+  overflow: hidden;
+  color: #172326;
+  font-size: 15px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-title span {
+  color: #94a0a2;
+  font-size: 11px;
+  letter-spacing: 1.8px;
+}
+.header-center {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  height: 66px;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  color: #8c9a9d;
+  font-size: 13px;
+}
+.preview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+}
+.header-icon-button {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 9px;
+  color: #172326;
+}
+.header-icon-button :deep(.anticon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+}
+.header-icon-button:hover,
+.header-icon-button:focus {
+  border-color: rgba(17, 24, 39, .08);
+  color: #172326;
+  background: #fff;
+}
+.studio-header :deep(.ant-space) {
+  position: relative;
+  z-index: 1;
+}
+.studio-header :deep(.ant-btn) {
+  height: 38px;
+  border-radius: 9px;
+}
+.studio-header :deep(.header-icon-button) {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+.studio-header :deep(.ant-btn-default) {
+  border-color: rgba(17, 24, 39, .1);
+  background: rgba(255, 255, 255, .76);
+}
+.studio-header :deep(.ant-btn-primary) {
+  border-color: #1f7aff;
+  background: #1f7aff;
+  box-shadow: 0 10px 22px rgba(31, 122, 255, .18);
+}
+.workspace {
+  display: grid;
+  height: calc(100vh - 66px);
+  background: #f5f7f9;
+}
+.preview-fullscreen .workspace {
+  grid-template-columns: 0 0 minmax(0, 1fr) 0 132px !important;
+}
+.resize-handle {
+  position: relative;
+  width: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+.resize-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 3px;
+  height: 42px;
+  border-radius: 4px;
+  background: #b6c7cc;
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity .2s, background .2s;
+}
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resizing .resize-handle::after {
+  background: #24aaa1;
+  opacity: 1;
+}
+.resize-handle:focus-visible {
+  outline: 2px solid #24aaa1;
+  outline-offset: -2px;
+}
+.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.resizing iframe {
+  pointer-events: none;
+}
+.conversation,
+.version-bar {
+  background: #f5f7f9;
+}
+.conversation {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+.preview-fullscreen .conversation,
+.preview-fullscreen .resize-handle {
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 34px 174px;
+}
+.welcome {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 28px;
+  padding: 16px;
+  border: 1px solid #e9eeee;
+  border-radius: 18px;
+  background: #f7fbfb;
+}
+.welcome h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.welcome p {
+  margin: 0;
+  color: #718385;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.ai-mark img,
+.avatar img {
+  width: 30px;
+  height: 30px;
+}
+.message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 24px 0;
+}
+.message-row.user {
+  justify-content: flex-end;
+}
+.avatar {
+  flex: 0 0 auto;
+}
+.user-avatar {
+  color: #fff;
+  background: #1d9bf0;
+  font-weight: 700;
+}
+.bubble {
+  max-width: 100%;
+  min-width: 0;
+}
+.assistant .bubble {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.user .bubble {
+  max-width: 76%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  color: #172326;
+  background: #f0f2f4;
+}
+.message-role {
+  display: none;
+}
+.message-content {
+  color: #142126;
+  font-size: 15px;
+  line-height: 1.85;
+  word-break: break-word;
+}
+.assistant .message-content {
+  max-width: 100%;
+}
+.user .message-content {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.message-text {
+  white-space: pre-wrap;
+}
+.code-block {
+  margin: 14px 0;
+  overflow: hidden;
+  border: 1px solid #dde5e5;
+  border-radius: 12px;
+  background: #fff;
+}
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 11px;
+  border-bottom: 1px solid #e6ebeb;
+  color: #7b898b;
+  background: #f8fafa;
+  font-size: 11px;
+  text-transform: lowercase;
+}
+.streaming-label {
+  color: #199e96;
+}
+.code-block pre {
+  max-height: 340px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  background: #fff;
+}
+.code-block code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre;
+}
+.typing i {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin: 9px 3px 0 0;
+  border-radius: 50%;
+  background: #74c7bd;
+  animation: pulse 1s infinite alternate;
+}
+.typing i:nth-child(2) {
+  animation-delay: .2s;
+}
+.typing i:nth-child(3) {
+  animation-delay: .4s;
+}
+@keyframes pulse {
+  to {
+    opacity: .25;
+    transform: translateY(-3px);
+  }
+}
+.scroll-to-latest {
+  position: absolute;
+  bottom: 150px;
+  left: 50%;
+  z-index: 1;
+  padding: 7px 13px;
+  border: 1px solid #bfe2de;
+  border-radius: 16px;
+  color: #168f88;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 4px 14px rgba(29,90,94,.12);
+  cursor: pointer;
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+.scroll-to-latest:hover {
+  border-color: #24aaa1;
+  background: #f4fbfa;
+}
+.composer-wrap {
+  position: absolute;
+  right: 14px;
+  bottom: 18px;
+  left: 14px;
+}
+.composer {
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(17, 24, 39, .08);
+  border-radius: 22px;
+  background: #f6f7f8;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .08);
+}
+.composer textarea {
+  resize: none;
+}
+.composer-input.disabled {
+  cursor: not-allowed;
+}
+.composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.composer-footer span {
+  color: #8b9699;
+  font-size: 12px;
+}
+.composer-footer :deep(.ant-btn-circle) {
+  background: #aeb5bb;
+}
+.preview-pane {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 14px 14px 28px 10px;
+  background: #f5f7f9;
+}
+.preview-fullscreen .preview-pane {
+  padding-left: 18px;
+}
+.preview-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1.5px solid #d7e0e8;
+  border-radius: 20px;
+  background: #eef2f6;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.72), 0 16px 36px rgba(15, 23, 42, .05);
+}
+.preview-stage iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+}
+.empty-preview {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.preview-illustration {
+  display: grid;
+  width: 76px;
+  height: 76px;
+  place-items: center;
+  border-radius: 24px;
+  color: #18a69c;
+  background: #e7f7f5;
+  font-size: 28px;
+}
+.empty-preview h2 {
+  margin: 18px 0 5px;
+}
+.empty-preview p {
+  max-width: 360px;
+  color: #98a5a6;
+  line-height: 1.7;
+}
+.version-bar {
+  padding: 18px 10px;
+  background: #f5f7f9;
+}
+.version-bar h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+.version-card {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #18aaa0;
+  border-radius: 12px;
+  color: #138f88;
+  background: #f4fbfa;
+  text-align: left;
+}
+.version-thumb {
+  margin-top: 8px;
+}
 </style>
