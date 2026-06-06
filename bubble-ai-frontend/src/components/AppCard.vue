@@ -16,12 +16,14 @@
               <h3>{{ app.appName || '未命名应用' }}</h3>
               <a-tag v-if="featured" color="cyan">精选</a-tag>
             </div>
-            <span class="author-name">{{ app.user?.userName || '我的应用' }}</span>
+            <span class="author-name">
+              {{ app.user?.userName || '我的应用' }}
+              <span>{{ formatDate(app.createTime, 'YYYY-MM-DD', '刚刚创建') }}</span>
+            </span>
           </div>
         </div>
         <p>{{ app.initPrompt || '还没有应用描述' }}</p>
-        <div class="card-footer">
-          <span>{{ formatDate(app.createTime, 'YYYY-MM-DD', '刚刚创建') }}</span>
+        <div v-if="editable" class="card-footer">
           <a-dropdown v-if="editable" :trigger="['click']">
             <a-button type="text" size="small" @click.stop><MoreOutlined /></a-button>
             <template #overlay>
@@ -62,21 +64,26 @@ const openDeployedApp = () => props.app.deployKey && window.open(`${APP_DEPLOY_B
 <style scoped>
 .app-card {
   cursor: pointer;
-  overflow: hidden;
-  border: 1px solid #edf1f4;
-  border-radius: 18px;
-  background: #fff;
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   transition: transform .25s ease, box-shadow .25s ease;
 }
 .app-card.forbidden { cursor: not-allowed; }
-.app-card:hover { transform: translateY(-5px); box-shadow: 0 18px 42px rgba(26, 113, 119, .13); }
-.card-body { padding: 15px 16px 13px; }
-.app-meta { display: flex; min-width: 0; align-items: center; gap: 13px; }
-.author-avatar { flex: 0 0 auto; color: #fff; background: #1d9bf0; font-weight: 700; }
+.app-card:hover { transform: translateY(-4px); }
+.card-body { padding: 16px 2px 0; }
+.app-meta { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.author-avatar { flex: 0 0 auto; color: #fff; background: #1d9bf0; font-weight: 700; box-shadow: 0 8px 18px rgba(15, 23, 42, .08); }
 .app-info { min-width: 0; flex: 1; }
-.title-row, .card-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-h3 { overflow: hidden; margin: 0; color: #142226; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
-.author-name { display: block; overflow: hidden; margin-top: 4px; color: #6f7f82; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-p { overflow: hidden; height: 42px; margin: 8px 0 12px; color: #718083; font-size: 13px; line-height: 21px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.card-footer { color: #99a6a8; font-size: 12px; }
+.title-row, .card-footer { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
+.title-row :deep(.ant-tag) { flex: 0 0 auto; margin-inline-end: 0; }
+h3 { overflow: hidden; margin: 0; color: #142226; font-size: 17px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.author-name { display: flex; overflow: hidden; margin-top: 3px; color: #6f7f82; font-size: 13px; gap: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.author-name span { color: #8a949c; }
+p { overflow: hidden; height: 22px; margin: 10px 0 0 54px; color: #718083; font-size: 13px; line-height: 22px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+.card-footer { display: flex; justify-content: flex-end; margin-top: 4px; color: #99a6a8; font-size: 12px; }
 </style>

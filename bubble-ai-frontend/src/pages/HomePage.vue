@@ -157,9 +157,9 @@ onMounted(() => { fetchMine(); fetchGood() })
 </script>
 
 <style scoped>
-.home-page { position: relative; min-height: calc(100vh - 64px); overflow: hidden; padding: 86px 24px 56px; background: radial-gradient(circle at 18% 6%, rgba(255,255,255,.68), transparent 26%), radial-gradient(circle at 76% 18%, rgba(255,255,255,.22), transparent 24%), linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(218,252,248,.72) 34%, rgba(116,210,246,.42) 76%, rgba(102,166,255,.4) 100%); }
+.home-page { position: relative; min-height: calc(100vh - 64px); overflow: hidden; padding: 72px 24px 56px; background: radial-gradient(circle at 18% 6%, rgba(255,255,255,.68), transparent 26%), radial-gradient(circle at 76% 18%, rgba(255,255,255,.22), transparent 24%), linear-gradient(180deg, rgba(255,255,255,.9) 0%, rgba(218,252,248,.72) 34%, rgba(116,210,246,.42) 76%, rgba(102,166,255,.4) 100%); }
 .home-page::before { position: absolute; inset: 0; background: radial-gradient(circle at 70% 48%, rgba(37,231,218,.2), transparent 24%), radial-gradient(circle at 36% 76%, rgba(102,166,255,.24), transparent 30%); content: ""; pointer-events: none; }
-.hero { position: relative; z-index: 1; max-width: 1100px; min-height: 640px; margin: 0 auto; padding: 70px 24px 36px; text-align: center; }
+.hero { position: relative; z-index: 1; max-width: 1100px; min-height: 560px; margin: 0 auto; padding: 60px 24px 30px; text-align: center; }
 .hero-copy .eyebrow { color: #0eaaa0; font-size: 12px; font-weight: 900; letter-spacing: 7px; }
 h1 { display: flex; align-items: center; justify-content: center; gap: 15px; margin: 18px 0 12px; color: #101d28; font-family: "YouSheBiaoTiHei", "Alimama ShuHeiTi", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; font-size: clamp(38px, 4.7vw, 66px); font-weight: 900; letter-spacing: 1px; line-height: 1.08; text-shadow: 0 10px 34px rgba(17, 54, 76, .1); }
 h1 .headline-text { background: linear-gradient(110deg, #101d28 8%, #142d4f 48%, #0aaea4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }

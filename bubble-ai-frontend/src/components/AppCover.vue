@@ -45,10 +45,33 @@ const coverUrl = computed(() => {
   place-items: center;
   background: #eff9f8;
 }
-
+.app-cover-card {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, .08);
+}
+.app-cover-thumb {
+  width: 100%;
+  height: 55px;
+  border-radius: 4px;
+  background: #daf1ef;
+}
+.app-cover-table {
+  width: 92px;
+  height: 52px;
+  border-radius: 12px;
+}
 .cover-image,
-
+.app-cover :deep(.ant-image),
+.app-cover :deep(.ant-image-img) {
+  width: 100%;
+  height: 100%;
+}
 .cover-image,
+.app-cover :deep(.ant-image-img) {
+  object-fit: cover;
+}
 
 .cover-placeholder {
   display: flex;
