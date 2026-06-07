@@ -155,7 +155,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                 .eq("parentId", parentId)
                 .eq("isDelete", 0);
         if (lastCreateTime!=null){
-            queryWrapper.lt("creatTime",lastCreateTime);
+            queryWrapper.lt("createTime",lastCreateTime);
         }
         if (StringUtils.isNotBlank(sort)) {
             queryWrapper.orderBy(sort,"ascend".equalsIgnoreCase(order));

@@ -13,11 +13,14 @@ import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.exception.ThrowUtils;
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
 import com.bubble.bubbleai.model.entity.App;
+import com.bubble.bubbleai.model.entity.ChatHistory;
 import com.bubble.bubbleai.model.entity.User;
+import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
 import com.bubble.bubbleai.model.vo.AppVO;
 import com.bubble.bubbleai.mapper.AppMapper;
 import com.bubble.bubbleai.model.vo.UserVO;
 import com.bubble.bubbleai.service.AppService;
+import com.bubble.bubbleai.service.ChatHistoryService;
 import com.bubble.bubbleai.service.ScreenshotService;
 import com.bubble.bubbleai.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -54,6 +57,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
     @Autowired
     private ScreenshotService screenshotService;
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -153,11 +158,28 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的应用生成类型");
         }
-        //5.调用AI生成代码
+        //5.保存用户消息
+        ChatHistory userMessage = chatHistoryService.addChatMessage(
+                appId,
+                loginUser.getId(),
+                ChatHistoryMessageTypeEnum.USER.getValue(),
+                message,
+                null
+        );
+        //6.调用AI生成代码
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-
-        //Async generate the app's cover
-        return codeStream.doOnComplete(()->{
+        StringBuilder aiMessageBuilder = new StringBuilder();
+        return codeStream.doOnNext(aiMessageBuilder::append).doOnComplete(()->{
+            String aiMessage = aiMessageBuilder.toString();
+            if (StrUtil.isNotBlank(aiMessage)) {
+                chatHistoryService.addChatMessage(
+                        appId,
+                        loginUser.getId(),
+                        ChatHistoryMessageTypeEnum.AI.getValue(),
+                        aiMessage,
+                        userMessage.getId()
+                );
+            }
             CompletableFuture.runAsync(()->{
                 try {
                     generateAppCover(appId, codeGenType);
@@ -165,6 +187,18 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     log.error("generate app's cover failed = {}",appId,e);
                 }
             });
+        }).doOnError(e -> {
+            String errorMessage = "AI 回复失败: "+e.getMessage();
+            if (StrUtil.isBlank(errorMessage)) {
+                errorMessage = e.getClass().getSimpleName();
+            }
+            chatHistoryService.addChatMessage(
+                    appId,
+                    loginUser.getId(),
+                    ChatHistoryMessageTypeEnum.ERROR.getValue(),
+                    "AI 回复失败：" + errorMessage,
+                    userMessage.getId()
+            );
         });
 
     }
@@ -245,4 +279,3 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         this.updateById(updateApp);
     }
 }
-
