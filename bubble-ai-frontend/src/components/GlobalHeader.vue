@@ -122,6 +122,11 @@ const originalItems = [
     title: '应用管理',
   },
   {
+    key: '/admin/chatHistoryManage',
+    label: '对话管理',
+    title: '对话管理',
+  },
+  {
     key: '/others',
     label: h('a', { href: 'https://github.com/CodeTainian/bubble-ai', target: '_blank' }, '项目源码'),
     title: '项目源码',

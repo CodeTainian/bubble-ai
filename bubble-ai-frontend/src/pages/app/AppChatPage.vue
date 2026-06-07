@@ -38,7 +38,13 @@
             <div class="ai-mark"><img src="@/assets/logo.svg" alt="" /></div>
             <div><h2>和 AI 一起把想法变成作品</h2><p>描述越具体，生成效果越贴近你的设想。你也可以继续对话，一步一步完善页面。</p></div>
           </div>
-          <article v-for="(item, index) in messages" :key="index" class="message-row" :class="item.role">
+          <div v-if="historyLoading && !historyInitialized" class="history-loading">正在加载历史对话...</div>
+          <div v-else-if="historyInitialized && hasMoreHistory" class="history-load-more">
+            <a-button size="small" type="link" :loading="historyLoadingMore" @click="loadMoreHistory">
+              <UpOutlined /> 加载更多
+            </a-button>
+          </div>
+          <article v-for="(item, index) in messages" :key="item.id || index" class="message-row" :class="item.role">
             <div v-if="item.role === 'assistant'" class="avatar"><img src="@/assets/logo.svg" alt="" /></div>
             <div class="bubble">
               <div class="message-role">{{ item.role === 'user' ? '你' : 'Bubble AI' }}</div>
@@ -125,18 +131,19 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined } from '@ant-design/icons-vue'
+import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined, UpOutlined } from '@ant-design/icons-vue'
 import hljs from 'highlight.js/lib/core'
 import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
 import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
 import { deployApp, getAppVoById } from '@/api/appController'
+import { listAppChatHistory } from '@/api/chatHistoryController'
 import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_PREVIEW_BASE_URL } from '@/config/env'
 
-type ChatMessage = { role: 'user' | 'assistant'; content: string; pending?: boolean }
+type ChatMessage = { id?: string; role: 'user' | 'assistant'; content: string; pending?: boolean; createTime?: string }
 type MessageBlock =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language: string; closed: boolean }
@@ -155,6 +162,7 @@ const appLoaded = ref(false)
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const generating = ref(false), deploying = ref(false), previewReady = ref(false)
+const historyLoading = ref(false), historyLoadingMore = ref(false), historyInitialized = ref(false), hasMoreHistory = ref(false)
 const previewFullscreen = ref(false)
 const followingOutput = ref(true)
 const previewKey = ref(0)
@@ -187,11 +195,14 @@ const PREVIEW_TOOLBAR_SAFE_LEFT = 404
 const PREVIEW_TOOLBAR_OFFSET = 17
 const TYPEWRITER_INTERVAL = 18
 const AUTO_SCROLL_THRESHOLD = 24
+const HISTORY_PAGE_SIZE = 10
 const COVER_SYNC_RETRY_COUNT = 5
 const COVER_SYNC_RETRY_DELAY = 800
-const SUMMARY_OUTPUT_INSTRUCTION = '生成完成后，请在所有代码块结束后追加“文件结构与说明”和“功能说明”两个总结章节。“文件结构与说明”需要按文件逐项说明，“功能说明”需要使用有序列表概括本次实际实现的功能。总结必须根据本次生成内容动态编写，不要省略，不要使用固定文案。'
 let resizeStartX = 0
 let resizeStartWidth = 0
+let historyCursor: string | undefined
+let loadedHistoryTotal = 0
+const loadedHistoryKeys = new Set<string>()
 
 const previewToolbarLeft = computed(() => {
   const previewLeft = previewFullscreen.value
@@ -246,14 +257,128 @@ const resumeFollowingOutput = () => {
   followingOutput.value = true
   scrollToBottom(true)
 }
+const getHistoryKey = (history: API.ChatHistory) =>
+  history.id ? `id:${history.id}` : `${history.createTime || ''}:${history.messageType || ''}:${history.message || ''}`
+const getHistoryTime = (history?: API.ChatHistory) => {
+  const value = history?.createTime ? new Date(history.createTime).getTime() : 0
+  return Number.isNaN(value) ? 0 : value
+}
+const sortHistoryAsc = (records: API.ChatHistory[]) => [...records].sort((a, b) => {
+  const timeDiff = getHistoryTime(a) - getHistoryTime(b)
+  if (timeDiff !== 0) return timeDiff
+  return String(a.id || '').localeCompare(String(b.id || ''))
+})
+const resolveHistoryRole = (messageType?: string): ChatMessage['role'] => {
+  const type = (messageType || '').trim().toLowerCase()
+  if (type.includes('user') || type.includes('human') || type.includes('request') || type.includes('用户')) return 'user'
+  if (type === 'ai' || type.includes('assistant') || type.includes('model') || type.includes('answer') || type.includes('response') || type.includes('助手')) return 'assistant'
+  return 'assistant'
+}
+const toChatMessage = (history: API.ChatHistory): ChatMessage => ({
+  id: history.id,
+  role: resolveHistoryRole(history.messageType),
+  content: history.message || '',
+  createTime: history.createTime,
+})
+const getHistoryTotal = (page?: API.PageChatHistory) => Number(page?.totalRow ?? 0)
+const mergeHistoryMessages = (records: API.ChatHistory[], mode: 'replace' | 'prepend') => {
+  const newMessages = sortHistoryAsc(records).reduce<ChatMessage[]>((result, history) => {
+    const key = getHistoryKey(history)
+    if (loadedHistoryKeys.has(key)) return result
+    loadedHistoryKeys.add(key)
+    result.push(toChatMessage(history))
+    return result
+  }, [])
+  messages.value = mode === 'replace' ? newMessages : [...newMessages, ...messages.value]
+  return newMessages.length
+}
+const updateHistoryCursor = (records: API.ChatHistory[]) => {
+  const oldest = sortHistoryAsc(records)[0]
+  if (oldest?.createTime) historyCursor = oldest.createTime
+}
+const updateHistoryMoreState = (page: API.PageChatHistory | undefined, records: API.ChatHistory[], addedCount: number) => {
+  const total = getHistoryTotal(page)
+  loadedHistoryTotal = total || loadedHistoryTotal
+  if (total > 0) {
+    hasMoreHistory.value = loadedHistoryKeys.size < total
+    return
+  }
+  hasMoreHistory.value = records.length >= HISTORY_PAGE_SIZE && addedCount > 0
+}
+const syncPreviewReadyWithHistory = () => {
+  previewReady.value = Boolean(app.value.codeGenType || loadedHistoryTotal >= 2 || loadedHistoryKeys.size >= 2)
+}
+const loadInitialHistory = async () => {
+  historyLoading.value = true
+  try {
+    const res = await listAppChatHistory({ appId: id, pageSize: HISTORY_PAGE_SIZE })
+    if (res.data.code !== 0) {
+      message.error('加载历史对话失败：' + res.data.message)
+      historyInitialized.value = true
+      return false
+    }
+    const page = res.data.data
+    const records = page?.records ?? []
+    loadedHistoryKeys.clear()
+    historyCursor = undefined
+    loadedHistoryTotal = getHistoryTotal(page)
+    const addedCount = mergeHistoryMessages(records, 'replace')
+    updateHistoryCursor(records)
+    updateHistoryMoreState(page, records, addedCount)
+    syncPreviewReadyWithHistory()
+    historyInitialized.value = true
+    await nextTick()
+    resumeFollowingOutput()
+    return true
+  } catch {
+    message.error('加载历史对话失败')
+    historyInitialized.value = true
+    return false
+  } finally {
+    historyLoading.value = false
+  }
+}
+const loadMoreHistory = async () => {
+  if (!hasMoreHistory.value || historyLoadingMore.value) return
+  historyLoadingMore.value = true
+  const list = messageList.value
+  const previousHeight = list?.scrollHeight ?? 0
+  const previousTop = list?.scrollTop ?? 0
+  const previousCursor = historyCursor
+  try {
+    const params: API.listAppChatHistoryParams = { appId: id, pageSize: HISTORY_PAGE_SIZE }
+    if (historyCursor) params.lastCreateTime = historyCursor
+    const res = await listAppChatHistory(params)
+    if (res.data.code !== 0) {
+      message.error('加载更多失败：' + res.data.message)
+      return
+    }
+    const page = res.data.data
+    const records = page?.records ?? []
+    const addedCount = mergeHistoryMessages(records, 'prepend')
+    updateHistoryCursor(records)
+    updateHistoryMoreState(page, records, addedCount)
+    if (!records.length || (!addedCount && historyCursor === previousCursor)) hasMoreHistory.value = false
+    await nextTick()
+    const currentList = messageList.value
+    if (currentList) currentList.scrollTop = currentList.scrollHeight - previousHeight + previousTop
+  } catch {
+    message.error('加载更多失败')
+  } finally {
+    historyLoadingMore.value = false
+  }
+}
 const loadApp = async () => {
   const res = await getAppVoById({ id })
   if (!res.data.data) return message.error('获取应用失败：' + res.data.message)
   app.value = res.data.data
   appLoaded.value = true
-  previewReady.value = Boolean(app.value.codeGenType)
-  if (route.query.auto === '1' && app.value.initPrompt) {
+  syncPreviewReadyWithHistory()
+  const historyLoaded = await loadInitialHistory()
+  if (route.query.auto === '1') {
     await router.replace({ path: route.path })
+  }
+  if (historyLoaded && canChat.value && loadedHistoryTotal === 0 && loadedHistoryKeys.size === 0 && app.value.initPrompt) {
     send(app.value.initPrompt)
   }
 }
@@ -279,7 +404,7 @@ const syncGeneratedAppInfo = async () => {
 const send = (content: string) => {
   if (!content.trim() || generating.value || !canChat.value) return
   const userMessage = content.trim()
-  const aiMessage = `${userMessage}\n\n${SUMMARY_OUTPUT_INSTRUCTION}`
+  const aiMessage = `${userMessage}`
   eventSource?.close()
   resetTypewriter()
   messages.value.push({ role: 'user', content: userMessage })
@@ -637,6 +762,24 @@ onBeforeUnmount(() => {
   color: #718385;
   font-size: 13px;
   line-height: 1.75;
+}
+.history-loading,
+.history-load-more {
+  display: flex;
+  justify-content: center;
+  margin: -6px 0 18px;
+  color: #8a989b;
+  font-size: 12px;
+}
+.history-load-more :deep(.ant-btn-link) {
+  height: 30px;
+  border-radius: 999px;
+  color: #168f88;
+  background: rgba(255, 255, 255, .82);
+  font-weight: 700;
+}
+.history-load-more :deep(.ant-btn-link:hover) {
+  background: #f1fbfa;
 }
 .ai-mark img,
 .avatar img {
