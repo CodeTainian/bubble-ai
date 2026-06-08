@@ -6,7 +6,8 @@ import lombok.Getter;
 @Getter
 public enum CodeGenTypeEnum {
     HTML("原生 HTML 模式", "html"),
-    MULTI_FIlE("原生多文件模式","multi_file");
+    MULTI_FIlE("原生多文件模式","multi_file"),
+    REACT_PROJECT("React 工程模式","react_project");
 
     private final String text;
     private final String value;

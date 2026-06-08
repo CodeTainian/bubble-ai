@@ -67,7 +67,7 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"生成类型为空");
         }
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId,codeGenTypeEnum);
         return switch (codeGenTypeEnum){
             case HTML -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMassage);
@@ -75,6 +75,10 @@ public class AiCodeGeneratorFacade {
             }
             case MULTI_FIlE -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMassage);
+                yield processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId);
+            }
+            case REACT_PROJECT -> {
+                Flux<String> codeStream = aiCodeGeneratorService.generateReactProjectCodeStream(appId, userMassage);
                 yield processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId);
             }
             default -> {
@@ -110,7 +114,7 @@ public class AiCodeGeneratorFacade {
         });
     }
 
-    /**
+    /*
      * 生成单个文件并保存
      * @param userMassage 用户消息
      * @return 保存的目录
@@ -120,7 +124,7 @@ public class AiCodeGeneratorFacade {
 //        return CodeFileSaver.saveHtmlCodeResult(result);
 //    }
 
-    /**
+    /*
      * 生成多个文件并保存
      * @param userMassage 用户消息
      * @return 保存的目录

@@ -30,4 +30,17 @@ class AiCodeGeneratorFacadeTest {
         String completeContent = String.join("", parts);
         Assertions.assertNotNull(completeContent);
     }
+
+    @Test
+    void generateReactProjectCodeStream(){
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("简单的打招呼网站,不超过200行代码",
+                CodeGenTypeEnum.REACT_PROJECT, 1L);
+        List<String> result= codeStream.collectList().block();
+        Assertions.assertNotNull(result);
+        String completeContent = String.join("",result);
+        Assertions.assertNotNull(completeContent);
+
+
+    }
+
 }
