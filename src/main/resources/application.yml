@@ -8,6 +8,15 @@ spring:
     url: jdbc:mysql://localhost:3306/bubble_ai_backend
     username: root
     password: rooter
+  #redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      ttl: 3600
+  session:
+    timeout: 2592000s
 server:
   port: 8123
   servlet:
@@ -17,6 +26,7 @@ server:
         same-site: none
         secure: true
         http-only: true
+        max-age: 2592000
 #springdoc-openapi
 springdoc:
   group-configs:

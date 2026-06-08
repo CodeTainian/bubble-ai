@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 class AiCodeGeneratorServiceTest {
@@ -18,6 +17,12 @@ class AiCodeGeneratorServiceTest {
     @Test
     void generateHtmlCode() {
         HtmlCodeResult result = aiCodeGeneratorService.generateHtmlCode("生成一个20行的博客代码");
+        Assertions.assertNotNull(result);
+        result = aiCodeGeneratorService.generateHtmlCode("告诉我你刚刚干了啥子");
+        Assertions.assertNotNull(result);
+        result = aiCodeGeneratorService.generateHtmlCode("做一个关爱老人网站，不超过20行代码");
+        Assertions.assertNotNull(result);
+        result = aiCodeGeneratorService.generateHtmlCode("tell me what you have done");
         Assertions.assertNotNull(result);
     }
 

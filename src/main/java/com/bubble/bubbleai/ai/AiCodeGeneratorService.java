@@ -4,9 +4,15 @@ package com.bubble.bubbleai.ai;
 import com.bubble.bubbleai.ai.model.HtmlCodeResult;
 import com.bubble.bubbleai.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.memory.ChatMemoryAccess;
 import reactor.core.publisher.Flux;
 
-public interface AiCodeGeneratorService {
+/**
+When using ChatMemory in this way it's also important to evict the memory of a no longer needed conversations in order to avoid memory leaks.
+To make the chat memories internally used by an AI service accessible
+it's enough that the interface defining it extends the ChatMemoryAccess one
+ */
+public interface AiCodeGeneratorService extends ChatMemoryAccess {
 
     /**
      *  生成Html代码

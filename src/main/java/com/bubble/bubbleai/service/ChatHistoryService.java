@@ -7,6 +7,7 @@ import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.vo.ChatHistoryVO;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 
 import java.time.LocalDateTime;
 
@@ -67,4 +68,7 @@ public interface ChatHistoryService extends IService<ChatHistory> {
      * @return 删除结果
      */
     boolean removeByAppId(Long appId);
+
+    int loadChatHistoryToMemory(Long appId, MessageWindowChatMemory chatMemory,int maxCount);
+
 }
