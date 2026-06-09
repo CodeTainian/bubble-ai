@@ -19,6 +19,7 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
 
+import java.nio.file.Path;
 import java.time.Duration;
 
 @Slf4j
@@ -72,14 +73,27 @@ public class AiCodeGeneratorServiceFactory {
         //根据不同的代码生成类型选择不同的模型配置
         return switch (codeGenTypeEnum){
             //React 项目生成使用的推理模型
-            case REACT_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
-                    .streamingChatModel(reasoningStreamingChatModel)
-                    .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
-                    .hallucinatedToolNameStrategy(toolExecutionRequest ->
-                            ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
-                                    toolExecutionRequest.name()))
-                    .build();
+//            case REACT_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
+//                    .streamingChatModel(reasoningStreamingChatModel)
+//                    .chatMemoryProvider(memoryId -> chatMemory)
+//                    .tools(new FileWriteTool())
+//                    .hallucinatedToolNameStrategy(toolExecutionRequest ->
+//                            ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
+//                                    toolExecutionRequest.name()))
+//                    .build();
+            case REACT_PROJECT -> {
+                Path projectRoot = Path.of("/Users/codergu/myProject/bubble-ai/tmp/code_output", String.valueOf(appId));
+                yield AiServices.builder(AiCodeGeneratorService.class)
+                        .streamingChatModel(reasoningStreamingChatModel)
+                        .chatMemoryProvider(memoryId -> chatMemory)
+                        .tools(new FileWriteTool(projectRoot))
+                        .hallucinatedToolNameStrategy(toolExecutionRequest ->
+                                ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
+                                 toolExecutionRequest.name()))
+                        .build();
+            }
+
+
             //HTML和多文件生成时使用
             case HTML,MULTI_FIlE -> AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)

@@ -30,6 +30,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -139,7 +140,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
-    public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
+    public Flux<ServerSentEvent<String>> chatToGenCode(Long appId, String message, User loginUser) {
         //1.参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
@@ -165,7 +166,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 null
         );
         //6.调用AI生成代码
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        Flux<ServerSentEvent<String>> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
         StringBuilder aiMessageBuilder = new StringBuilder();
         return codeStream.doOnNext(aiMessageBuilder::append).doOnComplete(()->{
             String aiMessage = aiMessageBuilder.toString();

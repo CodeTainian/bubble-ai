@@ -7,6 +7,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.bubble.bubbleai.model.entity.App;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.codec.ServerSentEvent;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -54,7 +55,7 @@ public interface AppService extends IService<App> {
      * @param loginUser 登录用户
      * @return 流失响应内容
      */
-    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+    Flux<ServerSentEvent<String>> chatToGenCode(Long appId, String message, User loginUser);
 
     /**
      * 应用部署

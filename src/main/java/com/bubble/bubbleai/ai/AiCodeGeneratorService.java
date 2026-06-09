@@ -5,6 +5,7 @@ import com.bubble.bubbleai.ai.model.HtmlCodeResult;
 import com.bubble.bubbleai.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.memory.ChatMemoryAccess;
 import reactor.core.publisher.Flux;
@@ -55,7 +56,7 @@ public interface AiCodeGeneratorService extends ChatMemoryAccess {
      * @return 生成过程的流失响应
      */
     @SystemMessage(fromResource = "prompt/codegen-react-project-system-prompt.txt")
-    Flux<String> generateReactProjectCodeStream(@MemoryId long appId, @UserMessage String userMessage);
+    TokenStream generateReactProjectCodeStream(@MemoryId long appId, @UserMessage String userMessage);
 
 }
 

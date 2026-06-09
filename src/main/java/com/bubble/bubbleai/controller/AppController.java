@@ -283,22 +283,37 @@ public class AppController {
      * @return 生成结果流
      */
     @GetMapping(value = "/chat/gen/code",produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId, @RequestParam String message, HttpServletRequest request) {
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
+                                                       @RequestParam String message,
+                                                       HttpServletRequest request) {
         //参数校验
         ThrowUtils.throwIf(appId==null||appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID无效");
         ThrowUtils.throwIf(StringUtils.isBlank(message), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
         //获取当前登录用户
         User loginUser = userService.getLoginUser(request);
-        //调用服务器生成代码(流式)
-        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
-        //转换为ServerSentEvent格式
-        return contentFlux.map(chunk->{
-            Map<String,String> wrapper = Map.of("d",chunk);
-            String jsonData = JSONUtil.toJsonStr(wrapper);
-            return ServerSentEvent.<String>builder().data(jsonData).build();
-        }).concatWith(Mono.just(
-                //发送结束事件
-                ServerSentEvent.<String>builder().event("done").data("").build()));
+//        //调用服务器生成代码(流式)
+//        Flux<ServerSentEvent<String>> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+//        //转换为ServerSentEvent格式
+//        return contentFlux.map(chunk->{
+//            Map<String,String> wrapper = Map.of("d",chunk);
+//            String jsonData = JSONUtil.toJsonStr(wrapper);
+//            return ServerSentEvent.<String>builder().data(jsonData).build();
+//        }).concatWith(Mono.just(
+//                //发送结束事件
+//                ServerSentEvent.<String>builder().event("done").data("").build()));
+        // 调用服务器生成代码（流式）
+        return appService.chatToGenCode(appId, message, loginUser)
+                .onErrorResume(error -> {
+                    Map<String, String> errorData = Map.of(
+                            "type", "generation_error",
+                            "message", error.getMessage()
+                    );
+                    String jsonData = JSONUtil.toJsonStr(errorData);
+                    return Flux.just(ServerSentEvent.<String>builder()
+                            .event("generation_error")
+                            .data(jsonData)
+                            .build());
+                });
     }
 
     /**
