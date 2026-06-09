@@ -144,6 +144,38 @@ declare namespace API {
     message: string
   }
 
+  type ChatStreamMessageType =
+    | 'ai_response'
+    | 'thinking'
+    | 'step'
+    | 'tool_call_start'
+    | 'tool_call_result'
+    | 'file_write'
+    | 'error'
+    | 'done'
+
+  type ChatStreamMessageStatus = 'running' | 'success' | 'error' | 'done'
+
+  type ToolCallInfo = {
+    id?: string
+    name?: string
+    arguments?: string
+    result?: string
+    success?: boolean
+    elapsedMillis?: number
+  }
+
+  type ChatStreamMessage = {
+    id?: string
+    appId?: string | number
+    type: ChatStreamMessageType
+    status?: ChatStreamMessageStatus
+    content?: string
+    tool?: ToolCallInfo | null
+    metadata?: Record<string, unknown>
+    timestamp?: number
+  }
+
   type DeleteRequest = {
     id?: string
   }
@@ -213,7 +245,7 @@ declare namespace API {
     optimizeCountQuery?: boolean
   }
 
-  type ServerSentEventString = true
+  type ServerSentEventChatStreamMessage = ChatStreamMessage
 
   type serveStaticResourceParams = {
     deployKey: string

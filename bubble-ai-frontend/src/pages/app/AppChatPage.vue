@@ -49,16 +49,32 @@
             <div class="bubble">
               <div class="message-role">{{ item.role === 'user' ? '你' : 'Bubble AI' }}</div>
               <div v-if="item.role === 'assistant'" class="message-content">
-                <template v-if="item.content">
-                  <template v-for="(block, blockIndex) in parseMessageBlocks(item.content)" :key="blockIndex">
+                <template v-if="hasAssistantOutput(item)">
+                  <template v-for="(block, blockIndex) in renderAssistantBlocks(item)" :key="blockIndex">
                     <div v-if="block.type === 'text'" class="message-text">{{ block.content }}</div>
-                    <section v-else class="code-block">
+                    <section v-else-if="block.type === 'code'" class="code-block">
                       <div class="code-header">
                         <span>{{ block.language || 'code' }}</span>
                         <span v-if="!block.closed" class="streaming-label">实时生成中</span>
                       </div>
                       <pre><code v-html="highlightCode(block.content, block.language)"></code></pre>
                     </section>
+                    <div v-else-if="block.type === 'step'" class="process-step">{{ block.title }}</div>
+                    <div v-else-if="block.type === 'dependency'" class="process-row dependency-row">
+                      <CodeSandboxOutlined />
+                      <span class="process-name">{{ block.name }}</span>
+                      <span class="process-status" :class="block.status">{{ block.statusText }}</span>
+                    </div>
+                    <div v-else-if="block.type === 'file'" class="process-row file-row">
+                      <EditOutlined />
+                      <span class="process-name">{{ block.fileName }}</span>
+                      <span class="process-path">{{ block.path }}</span>
+                    </div>
+                    <div v-else-if="block.type === 'tool'" class="process-row tool-row">
+                      <CodeOutlined />
+                      <span class="process-name">{{ block.label }}</span>
+                      <span v-if="block.detail" class="process-path">{{ block.detail }}</span>
+                    </div>
                   </template>
                 </template>
                 <span v-else>正在思考...</span>
@@ -131,7 +147,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined, UpOutlined } from '@ant-design/icons-vue'
+import { ArrowUpOutlined, CodeOutlined, CodeSandboxOutlined, DownloadOutlined, EditOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined, UpOutlined } from '@ant-design/icons-vue'
 import hljs from 'highlight.js/lib/core'
 import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -143,10 +159,14 @@ import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_PREVIEW_BASE_URL } from '@/config/env'
 
-type ChatMessage = { id?: string; role: 'user' | 'assistant'; content: string; pending?: boolean; createTime?: string }
-type MessageBlock =
+type ChatMessage = { id?: string; role: 'user' | 'assistant'; content: string; pending?: boolean; createTime?: string; blocks?: AssistantBlock[] }
+type AssistantBlock =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language: string; closed: boolean }
+  | { type: 'step'; title: string }
+  | { type: 'dependency'; name: string; status: 'running' | 'success' | 'error'; statusText: string }
+  | { type: 'file'; fileName: string; path: string; description?: string }
+  | { type: 'tool'; label: string; detail?: string }
 
 hljs.registerLanguage('html', xml)
 hljs.registerLanguage('xml', xml)
@@ -198,6 +218,19 @@ const AUTO_SCROLL_THRESHOLD = 24
 const HISTORY_PAGE_SIZE = 10
 const COVER_SYNC_RETRY_COUNT = 5
 const COVER_SYNC_RETRY_DELAY = 800
+const CHAT_STREAM_EVENT_TYPES: API.ChatStreamMessageType[] = [
+  'ai_response',
+  'thinking',
+  'step',
+  'tool_call_start',
+  'tool_call_result',
+  'file_write',
+  'error',
+  'done',
+]
+const FILE_TOKEN_PATTERN = /(?:src\/[\w@./-]+\.(?:jsx|tsx|js|ts|css|json|html)|[\w@.-]+\.(?:json|html|jsx|tsx|js|ts|css))/g
+const DEPENDENCY_STATUS_PATTERN = /(@?[\w.-]+(?:\/[\w.-]+)?)\s*(安装成功|安装失败|安装中)/g
+const INSTALL_TOOL_PATTERN = /(install|package|dependency|npm|pnpm|yarn|依赖|安装)/i
 let resizeStartX = 0
 let resizeStartWidth = 0
 let historyCursor: string | undefined
@@ -408,36 +441,117 @@ const send = (content: string) => {
   eventSource?.close()
   resetTypewriter()
   messages.value.push({ role: 'user', content: userMessage })
-  activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true }) - 1
+  activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true, blocks: [] }) - 1
   input.value = ''
   generating.value = true
   previewReady.value = false
   const source = new EventSource(`http://localhost:8123/api/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
   eventSource = source
-  source.onmessage = (event) => {
-    const assistant = getActiveAssistant()
-    const chunk = normalizeChunk(event.data)
-    if (!assistant || !chunk) return
-    assistant.pending = false
-    typewriterQueue += chunk
-    if (typewriterTimer === undefined) flushTypewriterQueue()
-  }
-  source.addEventListener('done', () => finishGeneration(source))
-  source.onerror = () => finishGeneration(source)
+  registerChatStreamListeners(source)
   resumeFollowingOutput()
 }
-const normalizeChunk = (chunk: string) => {
+
+const registerChatStreamListeners = (source: EventSource) => {
+  source.onmessage = (event) => handleStreamEvent(event, source)
+  CHAT_STREAM_EVENT_TYPES.forEach((type) => {
+    source.addEventListener(type, (event) => handleStreamEvent(event as MessageEvent<string>, source))
+  })
+  source.onerror = () => handleStreamConnectionError(source)
+}
+const handleStreamEvent = (event: MessageEvent<string>, source: EventSource) => {
+  if (eventSource !== source) return
+  const streamMessage = parseChatStreamMessage(event, source)
+  if (!streamMessage) return
+  handleChatStreamMessage(streamMessage, source)
+}
+const parseChatStreamMessage = (event: MessageEvent<string>, source: EventSource) => {
+  if (!event.data) {
+    failGeneration(source, '生成消息为空，请稍后重试')
+    return
+  }
   try {
-    const parsed: unknown = JSON.parse(chunk)
-    if (typeof parsed === 'string') return parsed
-    if (typeof parsed === 'object' && parsed !== null && 'd' in parsed && typeof parsed.d === 'string') return parsed.d
-    return chunk
-  } catch {
-    return chunk
+    const parsed = JSON.parse(event.data) as Partial<API.ChatStreamMessage>
+    if (!parsed || typeof parsed !== 'object' || !isChatStreamMessageType(parsed.type)) {
+      failGeneration(source, '生成消息格式异常，请稍后重试')
+      return
+    }
+    return parsed as API.ChatStreamMessage
+  } catch (error) {
+    console.error('[chat-stream] parse error', error, event.data)
+    failGeneration(source, '解析生成消息失败，请稍后重试')
   }
 }
-const parseMessageBlocks = (content: string): MessageBlock[] => {
-  const blocks: MessageBlock[] = []
+const isChatStreamMessageType = (type: unknown): type is API.ChatStreamMessageType =>
+  typeof type === 'string' && CHAT_STREAM_EVENT_TYPES.includes(type as API.ChatStreamMessageType)
+const handleChatStreamMessage = (streamMessage: API.ChatStreamMessage, source: EventSource) => {
+  switch (streamMessage.type) {
+    case 'ai_response':
+      appendAssistantContent(streamMessage.content)
+      break
+    case 'step':
+    case 'file_write':
+    case 'tool_call_result':
+      appendStreamProcessBlock(streamMessage)
+      break
+    case 'thinking':
+    case 'tool_call_start':
+      console.log(`[chat-stream] ${streamMessage.type}`, streamMessage)
+      break
+    case 'error':
+      console.error('[chat-stream] error', streamMessage)
+      failGeneration(source, streamMessage.content || 'AI 生成失败，请稍后重试')
+      break
+    case 'done':
+      finishGeneration(source)
+      break
+  }
+}
+const appendAssistantContent = (content?: string) => {
+  const assistant = getActiveAssistant()
+  if (!assistant || !content) return
+  assistant.pending = false
+  typewriterQueue += content
+  if (typewriterTimer === undefined) flushTypewriterQueue()
+}
+const appendStreamProcessBlock = (streamMessage: API.ChatStreamMessage) => {
+  const assistant = getActiveAssistant()
+  if (!assistant) return
+  const blocks = assistant.blocks ?? (assistant.blocks = [])
+  const newBlocks = createStreamProcessBlocks(streamMessage)
+  if (!newBlocks.length) {
+    console.log(`[chat-stream] ${streamMessage.type}`, streamMessage)
+    return
+  }
+  assistant.pending = false
+  blocks.push(...newBlocks)
+  scrollToBottom()
+}
+const handleStreamConnectionError = (source: EventSource) => {
+  if (eventSource !== source) return
+  failGeneration(source, '生成连接异常，请稍后重试')
+}
+const hasAssistantOutput = (item: ChatMessage) => Boolean(item.content || item.blocks?.length)
+const renderAssistantBlocks = (item: ChatMessage): AssistantBlock[] => {
+  if (item.blocks?.length) {
+    return item.blocks.flatMap((block) => block.type === 'text' ? parseAssistantContent(block.content) : [block])
+  }
+  return parseAssistantContent(item.content)
+}
+const parseAssistantContent = (content: string): AssistantBlock[] => {
+  const normalizedNewlines = content.replace(/\\n/g, '\n')
+  return parseMessageBlocks(normalizedNewlines).flatMap((block) => (
+    block.type === 'text' ? parseProcessTextBlocks(normalizeProcessText(block.content)) : [block]
+  ))
+}
+const normalizeProcessText = (content: string) =>
+  content
+    .replace(/#{1,6}\s*/g, '')
+    .replace(/(STEP\s*\d+\s*[:：])/gi, '\n$1')
+    .replace(/[-—]\s*(?=创建[^：:\n]{0,36}[：:])/g, '\n')
+    .replace(/(开始创建[：:])/g, '\n$1')
+    .trim()
+const parseMessageBlocks = (content: string): AssistantBlock[] => {
+  const blocks: AssistantBlock[] = []
   const openingFence = /```([^\n`]*)\n?/g
   let cursor = 0
   let match: RegExpExecArray | null
@@ -457,6 +571,130 @@ const parseMessageBlocks = (content: string): MessageBlock[] => {
   if (cursor < content.length) blocks.push({ type: 'text', content: content.slice(cursor) })
   return blocks
 }
+const parseProcessTextBlocks = (content: string): AssistantBlock[] => {
+  const blocks: AssistantBlock[] = []
+  const lines = content.split('\n').map((line) => line.trim()).filter(Boolean)
+  lines.forEach((line) => {
+    const stepBlock = parseStepLine(line)
+    if (stepBlock) {
+      blocks.push(stepBlock)
+      return
+    }
+    const dependencyBlocks = parseDependencyLine(line)
+    if (dependencyBlocks.length) {
+      blocks.push(...dependencyBlocks)
+      return
+    }
+    const planBlocks = parsePlanLine(line)
+    if (planBlocks.length) {
+      blocks.push(...planBlocks)
+      return
+    }
+    pushTextBlock(blocks, cleanupMessageLine(line))
+  })
+  return blocks
+}
+const parseStepLine = (line: string): AssistantBlock | undefined => {
+  const match = line.match(/^STEP\s*(\d+)\s*[:：]\s*(.+)$/i)
+  if (!match) return
+  return { type: 'step', title: `STEP ${match[1]}: ${match[2].trim()}` }
+}
+const parseDependencyLine = (line: string): AssistantBlock[] => {
+  const blocks: AssistantBlock[] = []
+  DEPENDENCY_STATUS_PATTERN.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = DEPENDENCY_STATUS_PATTERN.exec(line)) !== null) {
+    blocks.push({
+      type: 'dependency',
+      name: match[1],
+      status: match[2] === '安装失败' ? 'error' : match[2] === '安装中' ? 'running' : 'success',
+      statusText: match[2],
+    })
+  }
+  return blocks
+}
+const parsePlanLine = (line: string): AssistantBlock[] => {
+  const normalizedLine = cleanupMessageLine(line)
+  const match = normalizedLine.match(/^(?:生成计划\s*)?(?:创建|更新|修改|生成)([^：:]{0,40})[：:]\s*(.+)$/)
+  if (!match) return []
+  const files = extractFileTokens(match[2])
+  if (!files.length) return []
+  const title = match[1]?.trim()
+  const blocks: AssistantBlock[] = []
+  if (title) blocks.push({ type: 'step', title: `创建${title}` })
+  blocks.push(...files.map((path) => createFileBlock(path)))
+  return blocks
+}
+const cleanupMessageLine = (line: string) => line.replace(/^[-\s]+/, '').replace(/\s+/g, ' ').trim()
+const pushTextBlock = (blocks: AssistantBlock[], content: string) => {
+  if (!content) return
+  const lastBlock = blocks[blocks.length - 1]
+  if (lastBlock?.type === 'text') {
+    lastBlock.content = `${lastBlock.content}\n${content}`
+    return
+  }
+  blocks.push({ type: 'text', content })
+}
+const appendTextBlock = (assistant: ChatMessage, content: string) => {
+  const blocks = assistant.blocks ?? (assistant.blocks = [])
+  const lastBlock = blocks[blocks.length - 1]
+  if (lastBlock?.type === 'text') {
+    lastBlock.content += content
+    return
+  }
+  blocks.push({ type: 'text', content })
+}
+const createStreamProcessBlocks = (streamMessage: API.ChatStreamMessage): AssistantBlock[] => {
+  if (streamMessage.type === 'step') {
+    return [{ type: 'step', title: formatStepTitle(streamMessage) }]
+  }
+  if (streamMessage.type === 'file_write') {
+    const filePath = getMetadataString(streamMessage, 'path')
+    const fileName = getMetadataString(streamMessage, 'fileName') || getFileNameFromPath(filePath)
+    const description = getMetadataString(streamMessage, 'description')
+    const blocks: AssistantBlock[] = [createFileBlock(filePath || fileName, fileName, description)]
+    if (description && !formatStepTitle(streamMessage).includes(description)) pushTextBlock(blocks, `创建了${description}。`)
+    return blocks
+  }
+  if (streamMessage.type === 'tool_call_result') {
+    return createToolResultBlocks(streamMessage)
+  }
+  return []
+}
+const formatStepTitle = (streamMessage: API.ChatStreamMessage) => {
+  const step = getMetadataNumber(streamMessage, 'step')
+  const title = getMetadataString(streamMessage, 'title') || streamMessage.content || '生成步骤'
+  const compactStep = title.match(/^STEP\s*(\d+)\s*[:：]\s*(.+)$/i)
+  if (compactStep) return `STEP ${compactStep[1]}: ${compactStep[2].trim()}`
+  return step ? `STEP ${step}: ${title.replace(/^STEP\s*\d+\s*[:：]?\s*/i, '').trim()}` : title
+}
+const createToolResultBlocks = (streamMessage: API.ChatStreamMessage): AssistantBlock[] => {
+  const toolName = streamMessage.tool?.name || ''
+  if (!INSTALL_TOOL_PATTERN.test(`${toolName} ${streamMessage.content || ''}`)) return []
+  const packages = extractPackageTokens(`${streamMessage.tool?.arguments || ''} ${streamMessage.tool?.result || ''} ${streamMessage.content || ''}`)
+  const status = streamMessage.tool?.success === false || streamMessage.status === 'error' ? 'error' : 'success'
+  const statusText = status === 'error' ? '安装失败' : '安装成功'
+  return packages.map((name) => ({ type: 'dependency', name, status, statusText }))
+}
+const createFileBlock = (path: string, fileName = getFileNameFromPath(path), description?: string): AssistantBlock => ({
+  type: 'file',
+  fileName: fileName || path,
+  path,
+  description,
+})
+const getMetadataString = (streamMessage: API.ChatStreamMessage, key: string) => {
+  const value = streamMessage.metadata?.[key]
+  return typeof value === 'string' ? value : value == null ? '' : String(value)
+}
+const getMetadataNumber = (streamMessage: API.ChatStreamMessage, key: string) => {
+  const value = streamMessage.metadata?.[key]
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numberValue) ? numberValue : undefined
+}
+const extractFileTokens = (text: string) => Array.from(new Set(text.match(FILE_TOKEN_PATTERN) || []))
+const extractPackageTokens = (text: string) => Array.from(new Set(text.match(/@?[\w.-]+(?:\/[\w.-]+)?/g) || []))
+  .filter((token) => token.includes('-') || token.includes('/') || ['react', 'vue', 'vite'].includes(token))
+const getFileNameFromPath = (path: string) => path.split('/').filter(Boolean).pop() || path
 const normalizeLanguage = (language: string) => {
   const normalized = language.toLowerCase()
   return normalized === 'htm' ? 'html' : normalized
@@ -496,7 +734,9 @@ const flushTypewriterQueue = () => {
   const assistant = getActiveAssistant()
   if (!assistant) return
   const batchSize = getTypewriterBatchSize()
-  assistant.content += typewriterQueue.slice(0, batchSize)
+  const chunk = typewriterQueue.slice(0, batchSize)
+  assistant.content += chunk
+  appendTextBlock(assistant, chunk)
   typewriterQueue = typewriterQueue.slice(batchSize)
   scrollToBottom()
   if (typewriterQueue) typewriterTimer = window.setTimeout(flushTypewriterQueue, TYPEWRITER_INTERVAL)
@@ -508,6 +748,28 @@ const finishGeneration = (source: EventSource) => {
   eventSource = undefined
   streamEnded = true
   if (!typewriterQueue) completeGeneration()
+}
+const failGeneration = (source: EventSource | undefined, errorText: string) => {
+  if (source && eventSource !== source) return
+  source?.close()
+  if (!source) eventSource?.close()
+  eventSource = undefined
+  clearTypewriterTimer()
+  generating.value = false
+  const assistant = getActiveAssistant()
+  if (assistant) {
+    assistant.pending = false
+    if (typewriterQueue) {
+      assistant.content += typewriterQueue
+      appendTextBlock(assistant, typewriterQueue)
+    }
+    if (!assistant.content) assistant.content = `生成失败：${errorText}`
+  }
+  activeAssistantIndex = undefined
+  typewriterQueue = ''
+  streamEnded = false
+  message.error(errorText)
+  scrollToBottom()
 }
 const completeGeneration = () => {
   if (!generating.value) return
@@ -836,7 +1098,59 @@ onBeforeUnmount(() => {
   line-height: 1.65;
 }
 .message-text {
+  margin: 0 0 16px;
   white-space: pre-wrap;
+}
+.process-step {
+  margin: 20px 0 12px;
+  color: #152129;
+  font-size: 15px;
+  line-height: 1.65;
+  font-weight: 500;
+}
+.process-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin: 9px 0 9px 18px;
+  color: #6e7780;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.process-row :deep(.anticon) {
+  flex: 0 0 auto;
+  color: #8a939d;
+  font-size: 15px;
+}
+.process-name {
+  min-width: 0;
+  color: #66717b;
+  font-weight: 500;
+}
+.process-path,
+.process-status {
+  min-width: 0;
+  overflow: hidden;
+  color: #b3b8be;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.process-status {
+  font-family: inherit;
+}
+.process-status.success {
+  color: #2fbd8d;
+}
+.process-status.error {
+  color: #e05b5b;
+}
+.process-status.running {
+  color: #b38b29;
+}
+.file-row {
+  margin-top: 12px;
 }
 .code-block {
   margin: 14px 0;
