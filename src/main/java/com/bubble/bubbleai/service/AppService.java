@@ -1,6 +1,7 @@
 package com.bubble.bubbleai.service;
 
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
+import com.bubble.bubbleai.model.dto.toolCall.ChatStreamMessage;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.vo.AppVO;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -55,7 +56,7 @@ public interface AppService extends IService<App> {
      * @param loginUser 登录用户
      * @return 流失响应内容
      */
-    Flux<ServerSentEvent<String>> chatToGenCode(Long appId, String message, User loginUser);
+    Flux<ServerSentEvent<ChatStreamMessage>> chatToGenCode(Long appId, String message, User loginUser);
 
     /**
      * 应用部署

@@ -4,14 +4,18 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.bubble.bubbleai.ai.model.enums.ChatStreamMessageTypeEnum;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.constant.CaptureConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
+import com.bubble.bubbleai.core.SSE.ChatStreamMessageFactory;
+import com.bubble.bubbleai.core.SSE.ChatStreamSseUtil;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.exception.ThrowUtils;
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
+import com.bubble.bubbleai.model.dto.toolCall.ChatStreamMessage;
 import com.bubble.bubbleai.model.entity.App;
 import com.bubble.bubbleai.model.entity.ChatHistory;
 import com.bubble.bubbleai.model.entity.User;
@@ -39,6 +43,8 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -140,7 +146,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
-    public Flux<ServerSentEvent<String>> chatToGenCode(Long appId, String message, User loginUser) {
+    public Flux<ServerSentEvent<ChatStreamMessage>> chatToGenCode(Long appId, String message, User loginUser) {
         //1.参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
@@ -152,6 +158,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR,"无权限访问该应用");
         }
         //4.获取应用的代码生成类型
+        // 暂时设置为 VUE 工程生成
+        app.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         if (codeGenTypeEnum == null) {
@@ -166,9 +174,44 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 null
         );
         //6.调用AI生成代码
-        Flux<ServerSentEvent<String>> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        Flux<ServerSentEvent<ChatStreamMessage>> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        // 只收集 AI 正文，不收集工具调用消息、thinking、done、error
         StringBuilder aiMessageBuilder = new StringBuilder();
-        return codeStream.doOnNext(aiMessageBuilder::append).doOnComplete(()->{
+        // 标记本次流是否出现错误
+        AtomicBoolean hasError = new AtomicBoolean(false);
+        // 记录错误信息，方便保存到聊天记录
+        AtomicReference<String> errorMessageRef = new AtomicReference<>();
+        return codeStream.doOnNext(event->{
+            ChatStreamMessage streamMessage = event.data();
+            if (streamMessage==null||streamMessage.getType()==null){
+                return;
+            }
+            ChatStreamMessageTypeEnum type = streamMessage.getType();
+            if (ChatStreamMessageTypeEnum.AI_RESPONSE.equals(type)){
+                String content = streamMessage.getContent();
+                if (StrUtil.isNotBlank(content)){
+                    aiMessageBuilder.append(content);
+                }
+                return;
+            }
+            if (ChatStreamMessageTypeEnum.ERROR.equals(type)){
+                hasError.set(true);
+                errorMessageRef.set(streamMessage.getContent());
+            }
+            // TOOL_CALL_START、TOOL_CALL_RESULT、THINKING、DONE 暂时不保存进 AI 回复正文
+        }).doOnComplete(()->{
+            if (hasError.get()){
+                String errorMessage = errorMessageRef.get();
+                if (StrUtil.isBlank(errorMessage)){
+                    errorMessage="Ai 回复失败";
+                }
+                chatHistoryService.addChatMessage(appId,
+                        loginUser.getId(),
+                        ChatStreamMessageTypeEnum.ERROR.getValue(),
+                        errorMessage,
+                        userMessage.getId());
+                return;
+            }
             String aiMessage = aiMessageBuilder.toString();
             if (StrUtil.isNotBlank(aiMessage)) {
                 chatHistoryService.addChatMessage(
@@ -186,8 +229,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     log.error("generate app's cover failed = {}",appId,e);
                 }
             });
-        }).doOnError(e -> {
-            String errorMessage = "AI 回复失败: "+e.getMessage();
+        }).onErrorResume(e->{
+            hasError.set(true);
+            String errorMessage = e.getMessage();
             if (StrUtil.isBlank(errorMessage)) {
                 errorMessage = e.getClass().getSimpleName();
             }
@@ -198,6 +242,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     "AI 回复失败：" + errorMessage,
                     userMessage.getId()
             );
+            ServerSentEvent<ChatStreamMessage> errorEvent =
+                    ChatStreamSseUtil.build(ChatStreamMessageFactory.error(appId,e));
+            return Flux.just(errorEvent);
         });
 
     }

@@ -5,10 +5,13 @@ import com.bubble.bubbleai.ai.AiCodeGeneratorServiceFactory;
 import com.bubble.bubbleai.ai.model.HtmlCodeResult;
 import com.bubble.bubbleai.ai.model.MultiFileCodeResult;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
+import com.bubble.bubbleai.core.SSE.ChatStreamMessageFactory;
+import com.bubble.bubbleai.core.SSE.ChatStreamSseUtil;
 import com.bubble.bubbleai.core.parser.CodeParserExecutor;
 import com.bubble.bubbleai.core.saver.CodeFileSaveExecutor;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
+import com.bubble.bubbleai.model.dto.toolCall.ChatStreamMessage;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.service.TokenStream;
@@ -74,7 +77,7 @@ public class AiCodeGeneratorFacade {
      * @param appId 应用ID
      * @return 生成的代码片段
      */
-    public Flux<ServerSentEvent<String>> generateAndSaveCodeStream(String userMassage,CodeGenTypeEnum codeGenTypeEnum,Long appId) throws BusinessException {
+    public Flux<ServerSentEvent<ChatStreamMessage>> generateAndSaveCodeStream(String userMassage, CodeGenTypeEnum codeGenTypeEnum, Long appId) throws BusinessException {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"生成类型为空");
         }
@@ -83,14 +86,14 @@ public class AiCodeGeneratorFacade {
             case HTML -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMassage);
                 yield processCodeStream(codeStream,CodeGenTypeEnum.HTML,appId).
-                        map(chunk->ServerSentEvent.
-                                <String>builder().event("ai_text").data(chunk).build());
+                        map(chunk-> ChatStreamSseUtil.
+                                build(ChatStreamMessageFactory.aiResponse(appId,chunk)));
             }
             case MULTI_FIlE -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMassage);
                 yield processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId).
-                        map(chunk->ServerSentEvent.
-                                <String>builder().event("ai_text").data(chunk).build());
+                        map(chunk->ChatStreamSseUtil.
+                                build(ChatStreamMessageFactory.aiResponse(appId,chunk)));
             }
             case REACT_PROJECT -> {
                 TokenStream tokenStream = aiCodeGeneratorService.generateReactProjectCodeStream(appId, userMassage);
@@ -129,14 +132,11 @@ public class AiCodeGeneratorFacade {
         });
     }
 
-    private Flux<ServerSentEvent<String>> processReactProjectTokenStream(TokenStream tokenStream, Long appId) {
-        Sinks.Many<ServerSentEvent<String>> sink = Sinks.many().unicast().onBackpressureBuffer();
+    private Flux<ServerSentEvent<ChatStreamMessage>> processReactProjectTokenStream(TokenStream tokenStream, Long appId) {
+        Sinks.Many<ServerSentEvent<ChatStreamMessage>> sink = Sinks.many().unicast().onBackpressureBuffer();
         AtomicInteger stepCounter = new AtomicInteger(0);
         tokenStream.onPartialResponse(token -> {
-                    emit(sink, "ai_text", Map.of(
-                            "type", "ai_text",
-                            "content", token
-                    ));
+                    emit(sink,ChatStreamMessageFactory.aiResponse(appId,token));
                 })
                 .beforeToolExecution(beforeToolExecution -> {
                     var request = beforeToolExecution.request();
@@ -155,79 +155,45 @@ public class AiCodeGeneratorFacade {
                     String content = getString(args, "content");
 
                     int step = stepCounter.incrementAndGet();
+                    emit(sink,ChatStreamMessageFactory.
+                            step(appId,step,"STEP"+step+":"+description,path));
 
-                    Map<String, Object> stepData = new LinkedHashMap<>();
-                    stepData.put("type", "step");
-                    stepData.put("step", step);
-                    stepData.put("title", "STEP " + step + "：" + description);
-                    stepData.put("path", path);
-                    emit(sink, "step", stepData);
+                    emit(sink, ChatStreamMessageFactory.toolCallStart(
+                            appId, step, toolName, path, description
+                    ));
 
-                    Map<String, Object> toolStartData = new LinkedHashMap<>();
-                    toolStartData.put("type", "tool_start");
-                    toolStartData.put("step", step);
-                    toolStartData.put("toolName", toolName);
-                    toolStartData.put("path", path);
-                    toolStartData.put("description", description);
-                    emit(sink, "tool_start", toolStartData);
-
-                    Map<String, Object> fileWriteData = new LinkedHashMap<>();
-                    fileWriteData.put("type", "file_write");
-                    fileWriteData.put("step", step);
-                    fileWriteData.put("fileName", getFileName(path));
-                    fileWriteData.put("path", path);
-                    fileWriteData.put("language", guessLanguage(path));
-                    fileWriteData.put("description", description);
-                    fileWriteData.put("content", content);
-                    emit(sink, "file_write", fileWriteData);
+                    emit(sink, ChatStreamMessageFactory.fileWrite(appId
+                    ,step,getFileName(path),path,guessLanguage(path),description,content));
                 })
 
                 .onToolExecuted(toolExecution -> {
                     var request = toolExecution.request();
-
-                    Map<String, Object> data = new LinkedHashMap<>();
-                    data.put("type", "tool_done");
-                    data.put("toolName", request.name());
-                    data.put("result", String.valueOf(toolExecution.result()));
-
-                    emit(sink, "tool_done", data);
+                    emit(sink, ChatStreamMessageFactory.toolCallResult(appId,
+                            request.name(),String.valueOf(toolExecution.result())));
                 })
 
                 .onCompleteResponse(response -> {
-                    emit(sink, "done", Map.of(
-                            "type", "done",
-                            "message", "生成完成",
-                            "appId", appId
-                    ));
-
+                    emit(sink,ChatStreamMessageFactory.done(appId));
                     sink.tryEmitComplete();
                 })
 
                 .onError(error -> {
-                    emit(sink, "generation_error", Map.of(
-                            "type", "generation_error",
-                            "message", error.getMessage()
-                    ));
-
+                    emit(sink, ChatStreamMessageFactory.error(appId,error));
                     sink.tryEmitComplete();
                 })
-
                 .start();
-
         return sink.asFlux();
     }
 
-    private void emit(Sinks.Many<ServerSentEvent<String>> sink, String eventName, Object data) {
-        try {
-            String json = objectMapper.writeValueAsString(data);
-
-            sink.tryEmitNext(ServerSentEvent.<String>builder()
-                    .event(eventName)
-                    .data(json)
-                    .build());
-        } catch (Exception e) {
-            sink.tryEmitError(e);
+    private void emit(
+            Sinks.Many<ServerSentEvent<ChatStreamMessage>> sink,
+            ChatStreamMessage message
+    ) {
+        if (message == null) {
+            return;
         }
+
+        sink.tryEmitNext(ChatStreamSseUtil.build(message));
     }
 
     private Map<String, Object> parseToolArguments(String arguments) {

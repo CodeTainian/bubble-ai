@@ -1,6 +1,7 @@
 package com.bubble.bubbleai.core;
 
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
+import com.bubble.bubbleai.model.dto.toolCall.ChatStreamMessage;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -25,12 +26,12 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateAndSaveCodeStream() {
-        Flux<ServerSentEvent<String>> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("生成一个简单任务记录网站", CodeGenTypeEnum.MULTI_FIlE,1L);
-        List<ServerSentEvent<String>> parts = codeStream.collectList().block();
+        Flux<ServerSentEvent<ChatStreamMessage>> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("生成一个简单任务记录网站", CodeGenTypeEnum.MULTI_FIlE,1L);
+        List<ServerSentEvent<ChatStreamMessage>> parts = codeStream.collectList().block();
         Assertions.assertNotNull(parts);
 
         // 打印所有 SSE 事件，方便你观察后端到底推了什么
-        for (ServerSentEvent<String> event : parts) {
+        for (ServerSentEvent<ChatStreamMessage> event : parts) {
             System.out.println("event = " + event.event());
             System.out.println("data = " + event.data());
             System.out.println("----------------------");
@@ -43,20 +44,20 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateReactProjectCodeStream() {
-        Flux<ServerSentEvent<String>> eventStream =
+        Flux<ServerSentEvent<ChatStreamMessage>> eventStream =
                 aiCodeGeneratorFacade.generateAndSaveCodeStream(
-                        "简单的任务管理网站，不超过200行代码",
+                        "简单的壁纸推荐，不超过200行代码",
                         CodeGenTypeEnum.REACT_PROJECT,
                         1L
                 );
 
-        List<ServerSentEvent<String>> events = eventStream.collectList().block();
+        List<ServerSentEvent<ChatStreamMessage>> events = eventStream.collectList().block();
 
         Assertions.assertNotNull(events);
         Assertions.assertFalse(events.isEmpty());
 
         // 打印所有 SSE 事件，方便你观察后端到底推了什么
-        for (ServerSentEvent<String> event : events) {
+        for (ServerSentEvent<ChatStreamMessage> event : events) {
             System.out.println("event = " + event.event());
             System.out.println("data = " + event.data());
             System.out.println("----------------------");
