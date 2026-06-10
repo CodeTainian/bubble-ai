@@ -25,11 +25,17 @@ public class FileWriteTool {
                             @P("要写入文件的内容")String content,
                             @ToolMemoryId Long appid){
         try {
-            Path path = Paths.get(relativeFilePath);
-            if (!path.isAbsolute()){
-                String projectDirName = "react_project_"+appid;
-                Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
-                path = projectRoot.resolve(relativeFilePath);
+            Path relativePath = Paths.get(relativeFilePath);
+            if (relativePath.isAbsolute()) {
+                return "文件写入失败: 不允许使用绝对路径";
+            }
+            String projectDirName = "react_project_"+appid;
+            Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName)
+                    .toAbsolutePath()
+                    .normalize();
+            Path path = projectRoot.resolve(relativePath).normalize();
+            if (!path.startsWith(projectRoot)) {
+                return "文件写入失败: 文件路径超出项目目录";
             }
             //创建父目录，如果不存在
             Path parentDir = path.getParent();
