@@ -27,22 +27,49 @@ public class ChatStreamMessageFactory {
     }
 
     public static ChatStreamMessage step(Long appId, Integer step,String title,String path){
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("step", step);
+        metadata.put("title", title);
+        metadata.put("path", path == null ? "" : path);
+        metadata.put("visible", true);
         return base(appId,ChatStreamMessageTypeEnum.STEP,ChatStreamMessageStatusEnum.RUNNING)
                 .content(title)
-                .metadata(Map.of("step",step,"title",title,"path",path==null?"":path))
+                .metadata(metadata)
                 .build();
     }
 
-    public static ChatStreamMessage fileWrite(Long appId, Integer step, String fileName, String path, String language, String description, String content) {
+    public static ChatStreamMessage fileWrite(
+            Long appId,
+            Integer step,
+            String fileName,
+            String path,
+            String language,
+            String description,
+            String content,
+            String summary,
+            boolean visible,
+            boolean success,
+            String toolResult
+    ) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("step", step);
+        if (step != null) {
+            metadata.put("step", step);
+        }
         metadata.put("fileName", fileName);
         metadata.put("path", path);
         metadata.put("language", language);
         metadata.put("description", description);
+        metadata.put("summary", summary);
+        metadata.put("visible", visible);
+        metadata.put("toolResult", toolResult);
 
-        return base(appId, ChatStreamMessageTypeEnum.FILE_WRITE, ChatStreamMessageStatusEnum.RUNNING)
+        return base(
+                appId,
+                ChatStreamMessageTypeEnum.FILE_WRITE,
+                success ? ChatStreamMessageStatusEnum.SUCCESS : ChatStreamMessageStatusEnum.ERROR
+        )
                 .content(content)
+                .internalContent(content)
                 .metadata(metadata)
                 .build();
     }

@@ -24,7 +24,9 @@ import reactor.core.publisher.Sinks;
 
 import java.io.File;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -134,7 +136,8 @@ public class AiCodeGeneratorFacade {
 
     private Flux<ServerSentEvent<ChatStreamMessage>> processReactProjectTokenStream(TokenStream tokenStream, Long appId) {
         Sinks.Many<ServerSentEvent<ChatStreamMessage>> sink = Sinks.many().unicast().onBackpressureBuffer();
-        AtomicInteger stepCounter = new AtomicInteger(0);
+        AtomicInteger visibleStepCounter = new AtomicInteger(0);
+        Map<String, Integer> visibleStepByArguments = new ConcurrentHashMap<>();
         tokenStream.onPartialResponse(token -> {
                     emit(sink,ChatStreamMessageFactory.aiResponse(appId,token));
                 })
@@ -154,24 +157,60 @@ public class AiCodeGeneratorFacade {
                     );
 
                     String description = getString(args, "description");
-                    String content = getString(args, "content");
+                    boolean visible = shouldShowProgress(path);
+                    if (!visible) {
+                        return;
+                    }
 
-                    int step = stepCounter.incrementAndGet();
+                    int step = visibleStepCounter.incrementAndGet();
+                    visibleStepByArguments.put(buildToolCallKey(toolName, path, description, arguments), step);
                     emit(sink,ChatStreamMessageFactory.
-                            step(appId,step,"STEP"+step+":"+description,path));
+                            step(appId,step,buildStepTitle(step, description, path),path));
 
                     emit(sink, ChatStreamMessageFactory.toolCallStart(
                             appId, step, toolName, path, description
                     ));
-
-                    emit(sink, ChatStreamMessageFactory.fileWrite(appId
-                    ,step,getFileName(path),path,guessLanguage(path),description,content));
                 })
 
                 .onToolExecuted(toolExecution -> {
                     var request = toolExecution.request();
-                    emit(sink, ChatStreamMessageFactory.toolCallResult(appId,
-                            request.name(),String.valueOf(toolExecution.result())));
+                    String arguments = request.arguments();
+                    Map<String, Object> args = parseToolArguments(arguments);
+                    String path = firstNotBlank(
+                            getString(args, "path"),
+                            getString(args, "relativeFilePath"),
+                            getString(args, "fileName"),
+                            getString(args, "filePath")
+                    );
+                    String description = getString(args, "description");
+                    String content = getString(args, "content");
+                    String toolResult = String.valueOf(toolExecution.result());
+                    boolean visible = shouldShowProgress(path);
+                    Integer step = visible
+                            ? visibleStepByArguments.remove(buildToolCallKey(request.name(), path, description, arguments))
+                            : null;
+                    if (visible && step == null) {
+                        step = visibleStepCounter.incrementAndGet();
+                        emit(sink, ChatStreamMessageFactory.step(appId, step, buildStepTitle(step, description, path), path));
+                    }
+                    boolean success = isToolResultSuccess(toolResult);
+                    emit(sink, ChatStreamMessageFactory.fileWrite(
+                            appId,
+                            step,
+                            getFileName(path),
+                            path,
+                            guessLanguage(path),
+                            description,
+                            content,
+                            buildStepSummary(description, path, success),
+                            visible,
+                            success,
+                            toolResult
+                    ));
+                    if (visible) {
+                        emit(sink, ChatStreamMessageFactory.toolCallResult(appId,
+                                request.name(), toolResult));
+                    }
                 })
 
                 .onCompleteResponse(response -> {
@@ -226,6 +265,54 @@ public class AiCodeGeneratorFacade {
             }
         }
         return "";
+    }
+
+    private boolean shouldShowProgress(String path) {
+        String normalizedPath = normalizeRelativePath(path).toLowerCase(Locale.ROOT);
+        return !normalizedPath.isBlank();
+    }
+
+    private String normalizeRelativePath(String path) {
+        if (path == null) {
+            return "";
+        }
+        String normalizedPath = path.replace("\\", "/").trim();
+        while (normalizedPath.startsWith("./")) {
+            normalizedPath = normalizedPath.substring(2);
+        }
+        return normalizedPath;
+    }
+
+    private String buildToolCallKey(String toolName, String path, String description, String arguments) {
+        return firstNotBlank(toolName, "tool")
+                + "|"
+                + normalizeRelativePath(path)
+                + "|"
+                + firstNotBlank(description, "")
+                + "|"
+                + Integer.toHexString(arguments == null ? 0 : arguments.hashCode());
+    }
+
+    private String buildStepTitle(int step, String description, String path) {
+        String title = firstNotBlank(description, "创建" + getFileName(path));
+        title = title.replaceFirst("^STEP\\s*\\d+\\s*[:：]?\\s*", "").trim();
+        return "STEP " + step + ": " + title;
+    }
+
+    private String buildStepSummary(String description, String path, boolean success) {
+        if (!success) {
+            return "写入 " + firstNotBlank(getFileName(path), "文件") + " 时出现异常，请检查生成日志。";
+        }
+        String summary = firstNotBlank(description, "完成 " + getFileName(path) + " 的创建");
+        summary = summary.replaceFirst("^已?完成", "").trim();
+        if (summary.endsWith("。") || summary.endsWith("！") || summary.endsWith("!")) {
+            return summary;
+        }
+        return summary + "。";
+    }
+
+    private boolean isToolResultSuccess(String result) {
+        return result == null || !result.startsWith("写入失败");
     }
 
     private String getFileName(String path) {

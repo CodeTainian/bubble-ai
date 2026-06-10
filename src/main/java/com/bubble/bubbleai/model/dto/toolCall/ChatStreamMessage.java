@@ -3,6 +3,7 @@ package com.bubble.bubbleai.model.dto.toolCall;
 
 import com.bubble.bubbleai.ai.model.enums.ChatStreamMessageStatusEnum;
 import com.bubble.bubbleai.ai.model.enums.ChatStreamMessageTypeEnum;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -44,6 +45,12 @@ public class ChatStreamMessage {
      * 文本内容
      */
     private String content;
+
+    /**
+     * 仅服务端内部使用的完整内容，例如文件代码。避免大代码块进入 SSE 响应影响前端实时展示。
+     */
+    @JsonIgnore
+    private String internalContent;
 
     /**
      * 工具调用信息

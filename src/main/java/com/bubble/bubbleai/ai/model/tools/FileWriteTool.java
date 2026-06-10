@@ -27,7 +27,7 @@ public class FileWriteTool {
     @Tool("写入或更新 React 项目中的单个文件。每次只能写入一个文件。")
     public String writeFile(@P("文件相对路径，例如 package.json、index.html、src/main.jsx、src/App.jsx、src/pages/Index.jsx")String relativeFilePath,
                             @P("完整的文件内容")String content,
-                            @P("本次文件变更说明，例如：创建复古波普艺术风格主页") String description,
+                            @P("本次文件变更的 8 到 24 字中文短总结，例如：创建商品卡片组件") String description,
                             @ToolMemoryId Long appid){
         try {
             Path targetPath = projectRoot.resolve(relativeFilePath).normalize();

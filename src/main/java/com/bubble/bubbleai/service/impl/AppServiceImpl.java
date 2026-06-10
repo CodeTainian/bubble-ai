@@ -337,7 +337,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     private void appendFileWriteToHistory(StringBuilder aiMessageBuilder, ChatStreamMessage streamMessage) {
-        String code = streamMessage.getContent();
+        String code = streamMessage.getInternalContent();
+        if (code == null) {
+            code = streamMessage.getContent();
+        }
         if (code == null) {
             return;
         }
@@ -347,10 +350,19 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 getMetadataString(streamMessage, "fileName")
         );
         String language = firstNotBlank(getMetadataString(streamMessage, "language"), guessLanguage(path));
+        String step = getMetadataString(streamMessage, "step");
+        String description = firstNotBlank(
+                getMetadataString(streamMessage, "description"),
+                StrUtil.isBlank(path) ? "创建文件" : "创建" + path
+        );
         if (aiMessageBuilder.length() > 0) {
             aiMessageBuilder.append("\n\n");
         }
-        aiMessageBuilder.append("文件：")
+        aiMessageBuilder.append("STEP ")
+                .append(StrUtil.isBlank(step) ? "0" : step)
+                .append(": ")
+                .append(description)
+                .append("\n文件：")
                 .append(StrUtil.isBlank(path) ? "生成文件" : path)
                 .append("\n```")
                 .append(language)
