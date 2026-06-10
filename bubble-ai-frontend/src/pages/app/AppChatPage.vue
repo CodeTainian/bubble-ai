@@ -167,6 +167,10 @@ type AssistantBlock =
   | { type: 'dependency'; name: string; status: 'running' | 'success' | 'error'; statusText: string }
   | { type: 'file'; fileName: string; path: string; description?: string }
   | { type: 'tool'; label: string; detail?: string }
+type CodeBlock = Extract<AssistantBlock, { type: 'code' }>
+type TypewriterJob =
+  | { type: 'text'; content: string }
+  | { type: 'code'; content: string; block: CodeBlock }
 
 hljs.registerLanguage('html', xml)
 hljs.registerLanguage('xml', xml)
@@ -194,10 +198,16 @@ const resizingPane = ref<ResizePane>()
 let eventSource: EventSource | undefined
 let activeAssistantIndex: number | undefined
 let typewriterTimer: number | undefined
-let typewriterQueue = ''
+let typewriterQueue: TypewriterJob[] = []
 let streamEnded = false
 let coverSyncId = 0
-const previewUrl = computed(() => `${APP_PREVIEW_BASE_URL}/${app.value.codeGenType || 'html'}_${id}/`)
+const REACT_PROJECT_CODE_DIR_PREFIX = 'react_project_file'
+const buildCodeOutputDirName = (codeGenType: string | undefined, appId: string) => {
+  const type = codeGenType || 'react_project'
+  const prefix = type === 'react_project' ? REACT_PROJECT_CODE_DIR_PREFIX : type
+  return `${prefix}_${appId}`
+}
+const previewUrl = computed(() => `${APP_PREVIEW_BASE_URL}/${buildCodeOutputDirName(app.value.codeGenType, id)}/`)
 const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
@@ -510,13 +520,18 @@ const appendAssistantContent = (content?: string) => {
   const assistant = getActiveAssistant()
   if (!assistant || !content) return
   assistant.pending = false
-  typewriterQueue += content
-  if (typewriterTimer === undefined) flushTypewriterQueue()
+  queueTypewriterText(content)
 }
 const appendStreamProcessBlock = (streamMessage: API.ChatStreamMessage) => {
   const assistant = getActiveAssistant()
   if (!assistant) return
   const blocks = assistant.blocks ?? (assistant.blocks = [])
+  if (streamMessage.type === 'file_write') {
+    appendFileWriteBlock(blocks, streamMessage)
+    assistant.pending = false
+    scrollToBottom()
+    return
+  }
   const newBlocks = createStreamProcessBlocks(streamMessage)
   if (!newBlocks.length) {
     console.log(`[chat-stream] ${streamMessage.type}`, streamMessage)
@@ -525,6 +540,16 @@ const appendStreamProcessBlock = (streamMessage: API.ChatStreamMessage) => {
   assistant.pending = false
   blocks.push(...newBlocks)
   scrollToBottom()
+}
+const appendFileWriteBlock = (blocks: AssistantBlock[], streamMessage: API.ChatStreamMessage) => {
+  const filePath = getMetadataString(streamMessage, 'path')
+  const fileName = getMetadataString(streamMessage, 'fileName') || getFileNameFromPath(filePath)
+  const description = getMetadataString(streamMessage, 'description')
+  const language = getMetadataString(streamMessage, 'language') || guessLanguageByPath(filePath)
+  const fileBlock = createFileBlock(filePath || fileName, fileName, description)
+  const codeBlock: CodeBlock = { type: 'code', content: '', language, closed: false }
+  blocks.push(fileBlock, codeBlock)
+  queueTypewriterCode(codeBlock, streamMessage.content || '')
 }
 const handleStreamConnectionError = (source: EventSource) => {
   if (eventSource !== source) return
@@ -695,6 +720,16 @@ const extractFileTokens = (text: string) => Array.from(new Set(text.match(FILE_T
 const extractPackageTokens = (text: string) => Array.from(new Set(text.match(/@?[\w.-]+(?:\/[\w.-]+)?/g) || []))
   .filter((token) => token.includes('-') || token.includes('/') || ['react', 'vue', 'vite'].includes(token))
 const getFileNameFromPath = (path: string) => path.split('/').filter(Boolean).pop() || path
+const guessLanguageByPath = (path: string) => {
+  if (path.endsWith('.jsx')) return 'jsx'
+  if (path.endsWith('.tsx')) return 'tsx'
+  if (path.endsWith('.js')) return 'javascript'
+  if (path.endsWith('.ts')) return 'typescript'
+  if (path.endsWith('.css')) return 'css'
+  if (path.endsWith('.json')) return 'json'
+  if (path.endsWith('.html')) return 'html'
+  return 'text'
+}
 const normalizeLanguage = (language: string) => {
   const normalized = language.toLowerCase()
   return normalized === 'htm' ? 'html' : normalized
@@ -718,28 +753,68 @@ const clearTypewriterTimer = () => {
 const resetTypewriter = () => {
   clearTypewriterTimer()
   activeAssistantIndex = undefined
-  typewriterQueue = ''
+  typewriterQueue = []
   streamEnded = false
 }
+const getTypewriterQueueLength = () => typewriterQueue.reduce((total, job) => total + job.content.length, 0)
 const getTypewriterBatchSize = () => {
-  if (typewriterQueue.length > 2400) return 32
-  if (typewriterQueue.length > 1200) return 16
-  if (typewriterQueue.length > 480) return 8
-  if (typewriterQueue.length > 160) return 4
-  if (typewriterQueue.length > 60) return 2
+  const queueLength = getTypewriterQueueLength()
+  if (queueLength > 2400) return 32
+  if (queueLength > 1200) return 16
+  if (queueLength > 480) return 8
+  if (queueLength > 160) return 4
+  if (queueLength > 60) return 2
   return 1
+}
+const startTypewriter = () => {
+  if (typewriterTimer === undefined) flushTypewriterQueue()
+}
+const queueTypewriterText = (content: string) => {
+  typewriterQueue.push({ type: 'text', content })
+  startTypewriter()
+}
+const queueTypewriterCode = (block: CodeBlock, content: string) => {
+  if (!content) {
+    block.closed = true
+    return
+  }
+  typewriterQueue.push({ type: 'code', content, block })
+  startTypewriter()
+}
+const applyTypewriterChunk = (job: TypewriterJob, chunk: string, assistant: ChatMessage) => {
+  if (job.type === 'code') {
+    job.block.content += chunk
+    return
+  }
+  assistant.content += chunk
+  appendTextBlock(assistant, chunk)
+}
+const flushRemainingTypewriterQueue = (assistant: ChatMessage) => {
+  typewriterQueue.forEach((job) => {
+    applyTypewriterChunk(job, job.content, assistant)
+    if (job.type === 'code') job.block.closed = true
+  })
+  typewriterQueue = []
 }
 const flushTypewriterQueue = () => {
   typewriterTimer = undefined
   const assistant = getActiveAssistant()
   if (!assistant) return
+  const job = typewriterQueue[0]
+  if (!job) {
+    if (streamEnded) completeGeneration()
+    return
+  }
   const batchSize = getTypewriterBatchSize()
-  const chunk = typewriterQueue.slice(0, batchSize)
-  assistant.content += chunk
-  appendTextBlock(assistant, chunk)
-  typewriterQueue = typewriterQueue.slice(batchSize)
+  const chunk = job.content.slice(0, batchSize)
+  applyTypewriterChunk(job, chunk, assistant)
+  job.content = job.content.slice(batchSize)
+  if (!job.content) {
+    if (job.type === 'code') job.block.closed = true
+    typewriterQueue.shift()
+  }
   scrollToBottom()
-  if (typewriterQueue) typewriterTimer = window.setTimeout(flushTypewriterQueue, TYPEWRITER_INTERVAL)
+  if (typewriterQueue.length) typewriterTimer = window.setTimeout(flushTypewriterQueue, TYPEWRITER_INTERVAL)
   else if (streamEnded) completeGeneration()
 }
 const finishGeneration = (source: EventSource) => {
@@ -747,7 +822,7 @@ const finishGeneration = (source: EventSource) => {
   source.close()
   eventSource = undefined
   streamEnded = true
-  if (!typewriterQueue) completeGeneration()
+  if (!typewriterQueue.length) completeGeneration()
 }
 const failGeneration = (source: EventSource | undefined, errorText: string) => {
   if (source && eventSource !== source) return
@@ -759,14 +834,11 @@ const failGeneration = (source: EventSource | undefined, errorText: string) => {
   const assistant = getActiveAssistant()
   if (assistant) {
     assistant.pending = false
-    if (typewriterQueue) {
-      assistant.content += typewriterQueue
-      appendTextBlock(assistant, typewriterQueue)
-    }
-    if (!assistant.content) assistant.content = `生成失败：${errorText}`
+    if (typewriterQueue.length) flushRemainingTypewriterQueue(assistant)
+    if (!hasAssistantOutput(assistant)) assistant.content = `生成失败：${errorText}`
   }
   activeAssistantIndex = undefined
-  typewriterQueue = ''
+  typewriterQueue = []
   streamEnded = false
   message.error(errorText)
   scrollToBottom()
@@ -782,9 +854,9 @@ const completeGeneration = () => {
     assistant.pending = false
   }
   activeAssistantIndex = undefined
-  typewriterQueue = ''
+  typewriterQueue = []
   streamEnded = false
-  app.value.codeGenType ||= 'html'
+  app.value.codeGenType = 'react_project'
   previewReady.value = true
   refreshPreview()
   void syncGeneratedAppInfo()
