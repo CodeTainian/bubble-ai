@@ -52,6 +52,7 @@
                 <template v-if="hasAssistantOutput(item)">
                   <template v-for="(block, blockIndex) in renderAssistantBlocks(item)" :key="blockIndex">
                     <div v-if="block.type === 'text'" class="message-text">{{ block.content }}</div>
+                    <div v-else-if="block.type === 'summary'" class="process-summary">{{ block.content }}</div>
                     <section v-else-if="block.type === 'code'" class="code-block">
                       <div class="code-header">
                         <span>{{ block.language || 'code' }}</span>
@@ -164,6 +165,7 @@ type AssistantBlock =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language: string; closed: boolean }
   | { type: 'step'; title: string }
+  | { type: 'summary'; content: string }
   | { type: 'dependency'; name: string; status: 'running' | 'success' | 'error'; statusText: string }
   | { type: 'file'; fileName: string; path: string; description?: string }
   | { type: 'tool'; label: string; detail?: string }
@@ -171,6 +173,7 @@ type CodeBlock = Extract<AssistantBlock, { type: 'code' }>
 type TypewriterJob =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; block: CodeBlock }
+  | { type: 'blocks'; blocks: AssistantBlock[] }
 
 hljs.registerLanguage('html', xml)
 hljs.registerLanguage('xml', xml)
@@ -498,12 +501,12 @@ const handleChatStreamMessage = (streamMessage: API.ChatStreamMessage, source: E
     case 'ai_response':
       appendAssistantContent(streamMessage.content)
       break
-    case 'step':
     case 'file_write':
     case 'tool_call_result':
       appendStreamProcessBlock(streamMessage)
       break
     case 'thinking':
+    case 'step':
     case 'tool_call_start':
       console.log(`[chat-stream] ${streamMessage.type}`, streamMessage)
       break
@@ -525,11 +528,10 @@ const appendAssistantContent = (content?: string) => {
 const appendStreamProcessBlock = (streamMessage: API.ChatStreamMessage) => {
   const assistant = getActiveAssistant()
   if (!assistant) return
-  const blocks = assistant.blocks ?? (assistant.blocks = [])
   if (streamMessage.type === 'file_write') {
-    appendFileWriteBlock(blocks, streamMessage)
-    assistant.pending = false
-    scrollToBottom()
+    if (appendFileWriteBlock(streamMessage)) {
+      assistant.pending = false
+    }
     return
   }
   const newBlocks = createStreamProcessBlocks(streamMessage)
@@ -538,18 +540,18 @@ const appendStreamProcessBlock = (streamMessage: API.ChatStreamMessage) => {
     return
   }
   assistant.pending = false
-  blocks.push(...newBlocks)
-  scrollToBottom()
+  queueTypewriterBlocks(newBlocks)
 }
-const appendFileWriteBlock = (blocks: AssistantBlock[], streamMessage: API.ChatStreamMessage) => {
-  const filePath = getMetadataString(streamMessage, 'path')
-  const fileName = getMetadataString(streamMessage, 'fileName') || getFileNameFromPath(filePath)
-  const description = getMetadataString(streamMessage, 'description')
+const appendFileWriteBlock = (streamMessage: API.ChatStreamMessage) => {
+  const filePath = normalizeRelativePath(getMetadataString(streamMessage, 'path'))
   const language = getMetadataString(streamMessage, 'language') || guessLanguageByPath(filePath)
-  const fileBlock = createFileBlock(filePath || fileName, fileName, description)
-  const codeBlock: CodeBlock = { type: 'code', content: '', language, closed: false }
-  blocks.push(fileBlock, codeBlock)
-  queueTypewriterCode(codeBlock, streamMessage.content || '')
+  const code = streamMessage.content || ''
+  const codeBlock: CodeBlock | undefined = code ? { type: 'code', content: '', language, closed: false } : undefined
+  const newBlocks = createFileWriteBlocks(streamMessage, codeBlock)
+  if (!newBlocks.length) return false
+  queueTypewriterBlocks(newBlocks)
+  if (codeBlock) queueTypewriterCode(codeBlock, code)
+  return true
 }
 const handleStreamConnectionError = (source: EventSource) => {
   if (eventSource !== source) return
@@ -564,9 +566,34 @@ const renderAssistantBlocks = (item: ChatMessage): AssistantBlock[] => {
 }
 const parseAssistantContent = (content: string): AssistantBlock[] => {
   const normalizedNewlines = content.replace(/\\n/g, '\n')
-  return parseMessageBlocks(normalizedNewlines).flatMap((block) => (
-    block.type === 'text' ? parseProcessTextBlocks(normalizeProcessText(block.content)) : [block]
-  ))
+  const blocks: AssistantBlock[] = []
+  let syntheticStep = 0
+  const pushParsedBlock = (block: AssistantBlock) => {
+    if (block.type === 'step') {
+      const step = getStepNumberFromTitle(block.title)
+      if (step) syntheticStep = Math.max(syntheticStep, step)
+      blocks.push(block)
+      return
+    }
+    if (block.type === 'file') {
+      const previousBlock = blocks[blocks.length - 1]
+      if (previousBlock?.type !== 'step') {
+        syntheticStep += 1
+        blocks.push({ type: 'step', title: `STEP ${syntheticStep}: 创建${block.fileName}` })
+      }
+      blocks.push(block)
+      return
+    }
+    blocks.push(block)
+  }
+  parseMessageBlocks(normalizedNewlines).forEach((block) => {
+    if (block.type !== 'text') {
+      pushParsedBlock(block)
+      return
+    }
+    parseProcessTextBlocks(normalizeProcessText(block.content)).forEach(pushParsedBlock)
+  })
+  return blocks
 }
 const normalizeProcessText = (content: string) =>
   content
@@ -610,6 +637,11 @@ const parseProcessTextBlocks = (content: string): AssistantBlock[] => {
       blocks.push(...dependencyBlocks)
       return
     }
+    const fileBlock = parseFileLine(line)
+    if (fileBlock) {
+      blocks.push(fileBlock)
+      return
+    }
     const planBlocks = parsePlanLine(line)
     if (planBlocks.length) {
       blocks.push(...planBlocks)
@@ -622,7 +654,15 @@ const parseProcessTextBlocks = (content: string): AssistantBlock[] => {
 const parseStepLine = (line: string): AssistantBlock | undefined => {
   const match = line.match(/^STEP\s*(\d+)\s*[:：]\s*(.+)$/i)
   if (!match) return
-  return { type: 'step', title: `STEP ${match[1]}: ${match[2].trim()}` }
+  const title = match[2].trim()
+  return { type: 'step', title: `STEP ${match[1]}: ${title}` }
+}
+const parseFileLine = (line: string): AssistantBlock | undefined => {
+  const match = line.match(/^(?:文件|file)\s*[:：]\s*(.+)$/i)
+  if (!match) return
+  const fileInfo = cleanupMessageLine(match[1])
+  const [filePath] = extractFileTokens(fileInfo)
+  return createFileBlock(filePath || fileInfo)
 }
 const parseDependencyLine = (line: string): AssistantBlock[] => {
   const blocks: AssistantBlock[] = []
@@ -671,20 +711,28 @@ const appendTextBlock = (assistant: ChatMessage, content: string) => {
 }
 const createStreamProcessBlocks = (streamMessage: API.ChatStreamMessage): AssistantBlock[] => {
   if (streamMessage.type === 'step') {
+    if (!isVisibleStreamMessage(streamMessage)) return []
     return [{ type: 'step', title: formatStepTitle(streamMessage) }]
   }
   if (streamMessage.type === 'file_write') {
-    const filePath = getMetadataString(streamMessage, 'path')
-    const fileName = getMetadataString(streamMessage, 'fileName') || getFileNameFromPath(filePath)
-    const description = getMetadataString(streamMessage, 'description')
-    const blocks: AssistantBlock[] = [createFileBlock(filePath || fileName, fileName, description)]
-    if (description && !formatStepTitle(streamMessage).includes(description)) pushTextBlock(blocks, `创建了${description}。`)
-    return blocks
+    return createFileWriteBlocks(streamMessage)
   }
   if (streamMessage.type === 'tool_call_result') {
     return createToolResultBlocks(streamMessage)
   }
   return []
+}
+const createFileWriteBlocks = (streamMessage: API.ChatStreamMessage, codeBlock?: CodeBlock): AssistantBlock[] => {
+  if (!isVisibleStreamMessage(streamMessage)) return []
+  const filePath = normalizeRelativePath(getMetadataString(streamMessage, 'path'))
+  const fileName = getMetadataString(streamMessage, 'fileName') || getFileNameFromPath(filePath)
+  const description = getMetadataString(streamMessage, 'description')
+  const blocks: AssistantBlock[] = []
+  const step = getMetadataNumber(streamMessage, 'step')
+  if (step) blocks.push({ type: 'step', title: `STEP ${step}: ${description || `创建${fileName}`}` })
+  blocks.push(createFileBlock(filePath || fileName, fileName, description))
+  if (codeBlock) blocks.push(codeBlock)
+  return blocks
 }
 const formatStepTitle = (streamMessage: API.ChatStreamMessage) => {
   const step = getMetadataNumber(streamMessage, 'step')
@@ -704,22 +752,43 @@ const createToolResultBlocks = (streamMessage: API.ChatStreamMessage): Assistant
 const createFileBlock = (path: string, fileName = getFileNameFromPath(path), description?: string): AssistantBlock => ({
   type: 'file',
   fileName: fileName || path,
-  path,
+  path: normalizeRelativePath(path),
   description,
 })
 const getMetadataString = (streamMessage: API.ChatStreamMessage, key: string) => {
   const value = streamMessage.metadata?.[key]
   return typeof value === 'string' ? value : value == null ? '' : String(value)
 }
+const getMetadataBoolean = (streamMessage: API.ChatStreamMessage, key: string) => {
+  const value = streamMessage.metadata?.[key]
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value.toLowerCase() === 'true'
+  return undefined
+}
 const getMetadataNumber = (streamMessage: API.ChatStreamMessage, key: string) => {
   const value = streamMessage.metadata?.[key]
   const numberValue = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(numberValue) ? numberValue : undefined
 }
+const getStepNumberFromTitle = (title: string) => {
+  const match = title.match(/^STEP\s*(\d+)\s*[:：]/i)
+  const step = match ? Number(match[1]) : 0
+  return Number.isFinite(step) ? step : 0
+}
 const extractFileTokens = (text: string) => Array.from(new Set(text.match(FILE_TOKEN_PATTERN) || []))
 const extractPackageTokens = (text: string) => Array.from(new Set(text.match(/@?[\w.-]+(?:\/[\w.-]+)?/g) || []))
   .filter((token) => token.includes('-') || token.includes('/') || ['react', 'vue', 'vite'].includes(token))
-const getFileNameFromPath = (path: string) => path.split('/').filter(Boolean).pop() || path
+const getFileNameFromPath = (path: string) => normalizeRelativePath(path).split('/').filter(Boolean).pop() || path
+const normalizeRelativePath = (path: string) => {
+  let normalizedPath = (path || '').replace(/\\/g, '/').trim()
+  while (normalizedPath.startsWith('./')) normalizedPath = normalizedPath.slice(2)
+  return normalizedPath
+}
+const isVisibleStreamMessage = (streamMessage: API.ChatStreamMessage) => {
+  const visible = getMetadataBoolean(streamMessage, 'visible')
+  if (visible !== undefined) return visible
+  return Boolean(normalizeRelativePath(getMetadataString(streamMessage, 'path')))
+}
 const guessLanguageByPath = (path: string) => {
   if (path.endsWith('.jsx')) return 'jsx'
   if (path.endsWith('.tsx')) return 'tsx'
@@ -756,7 +825,10 @@ const resetTypewriter = () => {
   typewriterQueue = []
   streamEnded = false
 }
-const getTypewriterQueueLength = () => typewriterQueue.reduce((total, job) => total + job.content.length, 0)
+const getTypewriterQueueLength = () => typewriterQueue.reduce((total, job) => {
+  if (job.type === 'blocks') return total + job.blocks.length
+  return total + job.content.length
+}, 0)
 const getTypewriterBatchSize = () => {
   const queueLength = getTypewriterQueueLength()
   if (queueLength > 2400) return 32
@@ -773,6 +845,11 @@ const queueTypewriterText = (content: string) => {
   typewriterQueue.push({ type: 'text', content })
   startTypewriter()
 }
+const queueTypewriterBlocks = (blocks: AssistantBlock[]) => {
+  if (!blocks.length) return
+  typewriterQueue.push({ type: 'blocks', blocks })
+  startTypewriter()
+}
 const queueTypewriterCode = (block: CodeBlock, content: string) => {
   if (!content) {
     block.closed = true
@@ -782,6 +859,11 @@ const queueTypewriterCode = (block: CodeBlock, content: string) => {
   startTypewriter()
 }
 const applyTypewriterChunk = (job: TypewriterJob, chunk: string, assistant: ChatMessage) => {
+  if (job.type === 'blocks') {
+    const blocks = assistant.blocks ?? (assistant.blocks = [])
+    blocks.push(...job.blocks)
+    return
+  }
   if (job.type === 'code') {
     job.block.content += chunk
     return
@@ -791,7 +873,7 @@ const applyTypewriterChunk = (job: TypewriterJob, chunk: string, assistant: Chat
 }
 const flushRemainingTypewriterQueue = (assistant: ChatMessage) => {
   typewriterQueue.forEach((job) => {
-    applyTypewriterChunk(job, job.content, assistant)
+    applyTypewriterChunk(job, job.type === 'blocks' ? '' : job.content, assistant)
     if (job.type === 'code') job.block.closed = true
   })
   typewriterQueue = []
@@ -803,6 +885,14 @@ const flushTypewriterQueue = () => {
   const job = typewriterQueue[0]
   if (!job) {
     if (streamEnded) completeGeneration()
+    return
+  }
+  if (job.type === 'blocks') {
+    applyTypewriterChunk(job, '', assistant)
+    typewriterQueue.shift()
+    scrollToBottom()
+    if (typewriterQueue.length) typewriterTimer = window.setTimeout(flushTypewriterQueue, TYPEWRITER_INTERVAL)
+    else if (streamEnded) completeGeneration()
     return
   }
   const batchSize = getTypewriterBatchSize()
@@ -1172,6 +1262,12 @@ onBeforeUnmount(() => {
 .message-text {
   margin: 0 0 16px;
   white-space: pre-wrap;
+}
+.process-summary {
+  margin: 10px 0 18px;
+  color: #172326;
+  font-size: 15px;
+  line-height: 1.8;
 }
 .process-step {
   margin: 20px 0 12px;
