@@ -1,7 +1,6 @@
 package com.bubble.bubbleai.core.saver;
 
 import cn.hutool.core.io.FileUtil;
-import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.exception.BusinessException;
@@ -70,8 +69,7 @@ public abstract class CodeFileSaveTemplate<T> {
         if (appId == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"Id can't be null");
         }
-        String codeType = getCodeType().getValue();
-        String uniqueDirName = StrUtil.format("{}_{}",codeType, appId);
+        String uniqueDirName = AppConstant.buildCodeOutputDirName(getCodeType(), appId);
         String dirPath = FILE_SAVE_ROOT_DIR + File.separator +uniqueDirName;
         FileUtil.mkdir(dirPath);
         return dirPath;

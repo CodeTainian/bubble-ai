@@ -4,6 +4,7 @@ package com.bubble.bubbleai.ai;
 
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.ai.model.tools.FileWriteTool;
+import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.service.ChatHistoryService;
@@ -82,7 +83,10 @@ public class AiCodeGeneratorServiceFactory {
 //                                    toolExecutionRequest.name()))
 //                    .build();
             case REACT_PROJECT -> {
-                Path projectRoot = Path.of("/Users/codergu/myProject/bubble-ai/tmp/code_output", String.valueOf(appId));
+                Path projectRoot = Path.of(
+                        AppConstant.CODE_OUTPUT_ROOT_DIR,
+                        AppConstant.buildCodeOutputDirName(CodeGenTypeEnum.REACT_PROJECT, appId)
+                );
                 yield AiServices.builder(AiCodeGeneratorService.class)
                         .streamingChatModel(reasoningStreamingChatModel)
                         .chatMemoryProvider(memoryId -> chatMemory)

@@ -146,10 +146,12 @@ public class AiCodeGeneratorFacade {
 
                     Map<String, Object> args = parseToolArguments(arguments);
 
-                    String path = getString(args, "path");
-                    if (path.isBlank()) {
-                        path = getString(args, "fileName");
-                    }
+                    String path = firstNotBlank(
+                            getString(args, "path"),
+                            getString(args, "relativeFilePath"),
+                            getString(args, "fileName"),
+                            getString(args, "filePath")
+                    );
 
                     String description = getString(args, "description");
                     String content = getString(args, "content");
@@ -212,6 +214,18 @@ public class AiCodeGeneratorFacade {
     private String getString(Map<String, Object> map, String key) {
         Object value = map.get(key);
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private String firstNotBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     private String getFileName(String path) {

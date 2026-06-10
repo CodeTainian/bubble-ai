@@ -158,9 +158,16 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR,"无权限访问该应用");
         }
         //4.获取应用的代码生成类型
-        // 暂时设置为 VUE 工程生成
-        app.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
-        String codeGenType = app.getCodeGenType();
+        // 暂时统一设置为 React 工程生成
+        String codeGenType = CodeGenTypeEnum.REACT_PROJECT.getValue();
+        if (!codeGenType.equals(app.getCodeGenType())) {
+            App updateCodeGenTypeApp = new App();
+            updateCodeGenTypeApp.setId(appId);
+            updateCodeGenTypeApp.setCodeGenType(codeGenType);
+            boolean updateCodeGenTypeResult = this.updateById(updateCodeGenTypeApp);
+            ThrowUtils.throwIf(!updateCodeGenTypeResult, ErrorCode.OPERATION_ERROR, "更新应用生成类型失败");
+            app.setCodeGenType(codeGenType);
+        }
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的应用生成类型");
@@ -175,7 +182,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         );
         //6.调用AI生成代码
         Flux<ServerSentEvent<ChatStreamMessage>> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        // 只收集 AI 正文，不收集工具调用消息、thinking、done、error
+        // 收集 AI 正文和文件写入事件中的完整代码，供历史对话回放和上下文记忆使用。
         StringBuilder aiMessageBuilder = new StringBuilder();
         // 标记本次流是否出现错误
         AtomicBoolean hasError = new AtomicBoolean(false);
@@ -189,16 +196,20 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             ChatStreamMessageTypeEnum type = streamMessage.getType();
             if (ChatStreamMessageTypeEnum.AI_RESPONSE.equals(type)){
                 String content = streamMessage.getContent();
-                if (StrUtil.isNotBlank(content)){
+                if (StrUtil.isNotEmpty(content)){
                     aiMessageBuilder.append(content);
                 }
+                return;
+            }
+            if (ChatStreamMessageTypeEnum.FILE_WRITE.equals(type)){
+                appendFileWriteToHistory(aiMessageBuilder, streamMessage);
                 return;
             }
             if (ChatStreamMessageTypeEnum.ERROR.equals(type)){
                 hasError.set(true);
                 errorMessageRef.set(streamMessage.getContent());
             }
-            // TOOL_CALL_START、TOOL_CALL_RESULT、THINKING、DONE 暂时不保存进 AI 回复正文
+            // TOOL_CALL_START、TOOL_CALL_RESULT、THINKING、DONE 不保存进 AI 回复正文
         }).doOnComplete(()->{
             if (hasError.get()){
                 String errorMessage = errorMessageRef.get();
@@ -207,7 +218,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 }
                 chatHistoryService.addChatMessage(appId,
                         loginUser.getId(),
-                        ChatStreamMessageTypeEnum.ERROR.getValue(),
+                        ChatHistoryMessageTypeEnum.ERROR.getValue(),
                         errorMessage,
                         userMessage.getId());
                 return;
@@ -269,7 +280,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         //6.获取代码生成类型,构建源项目路径
         String codeGenType = app.getCodeGenType();
-        String sourceDirName = codeGenType + "_" + appId;
+        String sourceDirName = AppConstant.buildCodeOutputDirName(codeGenType, appId);
         String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR+ File.separator +sourceDirName;
         //7.检查原目录是否存在
         File sourceDir = new File(sourceDirPath);
@@ -298,7 +309,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     public void generateAppCover(Long appId, String codeGenType) {
         // 1. spell the website index name that Ai generated
-        String sourceDirName = codeGenType + "_" + appId;
+        String sourceDirName = AppConstant.buildCodeOutputDirName(codeGenType, appId);
         // 2. 拼接可以被浏览器访问的网站首页 URL
         String previewUrl = String.format("%s/%s/", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
         // eg："http://localhost:8123/api/static/";
@@ -323,6 +334,65 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         updateApp.setId(appId);
         updateApp.setCover(coverUrl);
         this.updateById(updateApp);
+    }
+
+    private void appendFileWriteToHistory(StringBuilder aiMessageBuilder, ChatStreamMessage streamMessage) {
+        String code = streamMessage.getContent();
+        if (code == null) {
+            return;
+        }
+        String path = firstNotBlank(
+                getMetadataString(streamMessage, "path"),
+                getMetadataString(streamMessage, "relativeFilePath"),
+                getMetadataString(streamMessage, "fileName")
+        );
+        String language = firstNotBlank(getMetadataString(streamMessage, "language"), guessLanguage(path));
+        if (aiMessageBuilder.length() > 0) {
+            aiMessageBuilder.append("\n\n");
+        }
+        aiMessageBuilder.append("文件：")
+                .append(StrUtil.isBlank(path) ? "生成文件" : path)
+                .append("\n```")
+                .append(language)
+                .append("\n")
+                .append(code);
+        if (!code.endsWith("\n")) {
+            aiMessageBuilder.append("\n");
+        }
+        aiMessageBuilder.append("```");
+    }
+
+    private String getMetadataString(ChatStreamMessage streamMessage, String key) {
+        if (streamMessage.getMetadata() == null || streamMessage.getMetadata().get(key) == null) {
+            return "";
+        }
+        return String.valueOf(streamMessage.getMetadata().get(key));
+    }
+
+    private String firstNotBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (StrUtil.isNotBlank(value)) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String guessLanguage(String path) {
+        if (path == null) {
+            return "text";
+        }
+        if (path.endsWith(".jsx")) return "jsx";
+        if (path.endsWith(".tsx")) return "tsx";
+        if (path.endsWith(".js")) return "javascript";
+        if (path.endsWith(".ts")) return "typescript";
+        if (path.endsWith(".css")) return "css";
+        if (path.endsWith(".json")) return "json";
+        if (path.endsWith(".html")) return "html";
+        return "text";
     }
 
     /**
