@@ -44,7 +44,7 @@ public class AiCodeGeneratorServiceFactory {
             .expireAfterWrite(Duration.ofMinutes(30))
             .expireAfterAccess(Duration.ofMinutes(10))
             .removalListener((key, value, cause) -> {
-                log.debug("AI 服务实例被移除，appId: {},原因: {}",key,cause);
+                log.debug("AI 服务实例被移除，缓存键: {},原因: {}",key,cause);
             }).build();
 
 
@@ -59,7 +59,9 @@ public class AiCodeGeneratorServiceFactory {
                 key -> createAiCodeGeneratorService(appId,codeGenTypeEnum));
     }
 
-    //根据appId构建独立的对话记忆
+    /**
+     * 根据appId构建独立的对话记忆
+     */
     private AiCodeGeneratorService createAiCodeGeneratorService(long appId,CodeGenTypeEnum codeGenTypeEnum){
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory
                 .builder()
@@ -73,6 +75,7 @@ public class AiCodeGeneratorServiceFactory {
         return switch (codeGenTypeEnum){
             //React 项目生成使用的推理模型
             case REACT_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
+                    .chatModel(chatModel)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
                     .tools(new FileWriteTool())
@@ -90,6 +93,12 @@ public class AiCodeGeneratorServiceFactory {
         };
     }
 
+    /**
+     *
+     * @param appId;
+     * @param codeGenTypeEnum;
+     * @return 缓存key
+     */
     private String buildCacheKey(long appId,CodeGenTypeEnum codeGenTypeEnum){
         return appId+ "_" +codeGenTypeEnum.getValue();
     }
