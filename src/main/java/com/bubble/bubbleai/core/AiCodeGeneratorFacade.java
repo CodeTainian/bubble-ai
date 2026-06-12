@@ -1,14 +1,19 @@
 package com.bubble.bubbleai.core;
 
+import cn.hutool.json.JSONUtil;
 import com.bubble.bubbleai.ai.AiCodeGeneratorService;
 import com.bubble.bubbleai.ai.AiCodeGeneratorServiceFactory;
 import com.bubble.bubbleai.ai.model.HtmlCodeResult;
 import com.bubble.bubbleai.ai.model.MultiFileCodeResult;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
+import com.bubble.bubbleai.ai.model.message.AiResponseMessage;
+import com.bubble.bubbleai.ai.model.message.ToolExecutedMessage;
+import com.bubble.bubbleai.ai.model.message.ToolRequestMessage;
 import com.bubble.bubbleai.core.parser.CodeParserExecutor;
 import com.bubble.bubbleai.core.saver.CodeFileSaveExecutor;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
+import dev.langchain4j.service.TokenStream;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -78,14 +83,39 @@ public class AiCodeGeneratorFacade {
                 yield processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId);
             }
             case REACT_PROJECT -> {
-                Flux<String> codeStream = aiCodeGeneratorService.generateReactProjectCodeStream(appId, userMassage);
-                yield processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId);
+                TokenStream tokenStream = aiCodeGeneratorService.generateReactProjectCodeStream(appId, userMassage);
+                yield processTokenStream(tokenStream);
             }
             default -> {
                 String errorMessage = "不支持的生成类型"+ codeGenTypeEnum.getValue();
                 throw new BusinessException(ErrorCode.SYSTEM_ERROR,errorMessage);
             }
         };
+    }
+
+    /**
+     * Make the TokenStream cover to Flux<String>
+     * @param tokenStream;
+     * @return Flux<String>
+     */
+    private Flux<String> processTokenStream(TokenStream tokenStream) {
+        return Flux.create(sink->{
+            tokenStream.onPartialResponse((String partialResponse)->{
+                AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
+                sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+            }).onPartialToolExecutionRequest((index,toolExecuteRequest)->{
+                ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecuteRequest);
+                sink.next(JSONUtil.toJsonStr(toolRequestMessage));
+            }).onToolExecuted((toolExecution -> {
+                ToolExecutedMessage toolExecutedMessage = new ToolExecutedMessage(toolExecution);
+                sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
+            })).onCompleteResponse((ChatResponse)->{
+                sink.complete();
+            }).onError((Throwable error)->{
+                error.printStackTrace();
+                sink.error(error);
+            }).start();
+        });
     }
 
     /**
