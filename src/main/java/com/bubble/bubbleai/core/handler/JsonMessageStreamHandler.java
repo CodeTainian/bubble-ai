@@ -22,6 +22,12 @@ import java.util.Set;
 @Component
 public class JsonMessageStreamHandler extends AbstractStreamHandler {
 
+    private static final String RELATIVE_FILE_PATH_FIELD = "relativeFilePath";
+
+    private static final String RELATIVE_PATH_FIELD = "relativePath";
+
+    private static final String CONTENT_FIELD = "content";
+
     public JsonMessageStreamHandler(ChatHistoryService chatHistoryService, AppCoverGenerator appCoverGenerator) {
         super(chatHistoryService, appCoverGenerator);
     }
@@ -63,23 +69,31 @@ public class JsonMessageStreamHandler extends AbstractStreamHandler {
             case TOOL_REQUEST -> {
                 ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
                 String toolId = toolRequestMessage.getId();
-                if (StrUtil.isNotBlank(toolId) && seenToolIds.add(toolId)) {
-                    return "\n\n[选择工具] 写入文件\n\n";
+                ToolFileInfo toolFileInfo = parseToolFileInfo(toolRequestMessage.getArgument());
+                if (StrUtil.isNotBlank(toolId)
+                        && StrUtil.isNotBlank(toolFileInfo.relativePath())
+                        && seenToolIds.add(toolId)) {
+                    return String.format("\n\n[选择工具] 写入文件 %s\n\n", toolFileInfo.relativePath());
                 }
                 return "";
             }
             case TOOL_EXECUTED -> {
                 ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
-                JSONObject jsonObject = JSONUtil.parseObj(toolExecutedMessage.getArgument());
-                String relativePath = jsonObject.getStr("relativePath");
+                ToolFileInfo toolFileInfo = parseToolFileInfo(toolExecutedMessage.getArgument());
+                String relativePath = toolFileInfo.relativePath();
                 if (StrUtil.isBlank(relativePath)) {
-                    relativePath = "unknown";
+                    relativePath = parseRelativePathFromResult(toolExecutedMessage.getResult());
+                }
+                if (StrUtil.isBlank(relativePath)) {
+                    log.warn("工具执行结果缺少文件路径, toolId={}, result={}",
+                            toolExecutedMessage.getId(), toolExecutedMessage.getResult());
+                    return "";
                 }
                 String suffix = FileUtil.getSuffix(relativePath);
                 if (suffix == null) {
                     suffix = "";
                 }
-                String content = jsonObject.getStr("content");
+                String content = toolFileInfo.content();
                 if (content == null) {
                     content = "";
                 }
@@ -95,6 +109,50 @@ public class JsonMessageStreamHandler extends AbstractStreamHandler {
             }
         }
         return "";
+    }
+
+    private ToolFileInfo parseToolFileInfo(String argument) {
+        if (StrUtil.isBlank(argument)) {
+            return ToolFileInfo.empty();
+        }
+        String json = argument.trim();
+        if (!json.startsWith("{") || !json.endsWith("}")) {
+            return ToolFileInfo.empty();
+        }
+        try {
+            JSONObject jsonObject = JSONUtil.parseObj(json);
+            String relativePath = jsonObject.getStr(RELATIVE_FILE_PATH_FIELD);
+            if (StrUtil.isBlank(relativePath)) {
+                relativePath = jsonObject.getStr(RELATIVE_PATH_FIELD);
+            }
+            String content = jsonObject.getStr(CONTENT_FIELD);
+            return new ToolFileInfo(relativePath, content);
+        } catch (Exception e) {
+            log.warn("解析工具调用参数失败: {}", json, e);
+            return ToolFileInfo.empty();
+        }
+    }
+
+    private String parseRelativePathFromResult(String result) {
+        if (StrUtil.isBlank(result)) {
+            return "";
+        }
+        String successPrefix = "文件写入成功:";
+        String failPrefix = "文件写入失败:";
+        if (result.startsWith(successPrefix)) {
+            return result.substring(successPrefix.length()).trim();
+        }
+        if (result.startsWith(failPrefix)) {
+            return result.substring(failPrefix.length()).trim();
+        }
+        return "";
+    }
+
+    private record ToolFileInfo(String relativePath, String content) {
+
+        private static ToolFileInfo empty() {
+            return new ToolFileInfo("", "");
+        }
     }
 
 
