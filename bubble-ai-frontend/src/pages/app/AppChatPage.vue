@@ -436,13 +436,19 @@ const normalizeChunk = (chunk: string) => {
     return chunk
   }
 }
+const normalizeTextBlock = (content: string) =>
+  content.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+const appendTextBlock = (blocks: MessageBlock[], content: string) => {
+  const normalizedContent = normalizeTextBlock(content)
+  if (normalizedContent) blocks.push({ type: 'text', content: normalizedContent })
+}
 const parseMessageBlocks = (content: string): MessageBlock[] => {
   const blocks: MessageBlock[] = []
   const openingFence = /```([^\n`]*)\n?/g
   let cursor = 0
   let match: RegExpExecArray | null
   while ((match = openingFence.exec(content)) !== null) {
-    if (match.index > cursor) blocks.push({ type: 'text', content: content.slice(cursor, match.index) })
+    if (match.index > cursor) appendTextBlock(blocks, content.slice(cursor, match.index))
     const codeStart = match.index + match[0].length
     const closingFence = content.indexOf('```', codeStart)
     if (closingFence === -1) {
@@ -454,7 +460,7 @@ const parseMessageBlocks = (content: string): MessageBlock[] => {
     cursor = closingFence + 3
     openingFence.lastIndex = cursor
   }
-  if (cursor < content.length) blocks.push({ type: 'text', content: content.slice(cursor) })
+  if (cursor < content.length) appendTextBlock(blocks, content.slice(cursor))
   return blocks
 }
 const normalizeLanguage = (language: string) => {
@@ -790,7 +796,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  margin: 24px 0;
+  margin: 18px 0;
 }
 .message-row.user {
   justify-content: flex-end;
