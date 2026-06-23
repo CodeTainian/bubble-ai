@@ -7,6 +7,7 @@ import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
+import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.core.handler.AppCoverGenerator;
 import com.bubble.bubbleai.core.handler.StreamHandlerExecute;
 import com.bubble.bubbleai.exception.BusinessException;
@@ -57,6 +58,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private ChatHistoryService chatHistoryService;
     @Resource
     private AppCoverGenerator appCoverGenerator;
+    @Resource
+    private ReactProjectBuilder reactProjectBuilder;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -193,21 +196,30 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (!sourceDir.exists()||!sourceDir.isDirectory()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"应用代码不存在，请先生成代码");
         }
-        //8.复制文件到部署目录
+        //8. Vue项目特殊处理：执行构造
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum==CodeGenTypeEnum.REACT_PROJECT){
+            boolean buildResult = reactProjectBuilder.buildProject(sourceDirPath);
+            ThrowUtils.throwIf(!buildResult,ErrorCode.SYSTEM_ERROR,"React项目构建失败，请重试");
+            File distDir = new File(sourceDirPath, "dist");
+            ThrowUtils.throwIf(!distDir.exists(),ErrorCode.SYSTEM_ERROR,"React项目构建完毕，但未生成dist目录");
+            sourceDir = distDir;
+        }
+        //9.复制文件到部署目录
         String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR+ File.separator +deployKey;
         try {
             FileUtil.copyContent(sourceDir,new File(deployDirPath),true);
         }catch (Exception e){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"部署失败"+e.getMessage());
         }
-        //9.更新应用的deployKey和部署时间
+        //10.更新应用的deployKey和部署时间
         App updateApp = new App();
         updateApp.setId(appId);
         updateApp.setDeployKey(deployKey);
         updateApp.setDeployedTime(LocalDateTime.now());
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult,ErrorCode.OPERATION_ERROR,"更新应用部署信息失败");
-        //10.返回可访问的url
+        //11.返回可访问的url
        // return AppConstant.CODE_DEPLOY_HOST + File.separator + deployKey;
         return String.format("%s/%s/",AppConstant.CODE_DEPLOY_HOST,deployKey);
 

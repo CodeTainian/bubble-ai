@@ -1,8 +1,11 @@
 package com.bubble.bubbleai.core.handler;
 
 import cn.hutool.core.util.StrUtil;
+import com.bubble.bubbleai.constant.AppConstant;
+import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
 import com.bubble.bubbleai.service.ChatHistoryService;
+import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
@@ -17,6 +20,9 @@ public abstract class AbstractStreamHandler implements StreamHandler {
     protected final ChatHistoryService chatHistoryService;
 
     private final AppCoverGenerator appCoverGenerator;
+
+    @Resource
+    private ReactProjectBuilder reactProjectBuilder;
 
     @Override
     public Flux<String> handle(StreamHandleContext context) {
@@ -46,6 +52,8 @@ public abstract class AbstractStreamHandler implements StreamHandler {
                         aiMessage,
                         null
                 );
+                String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR+"/react_project_"+context.appId();
+                reactProjectBuilder.buildProjectAsync(projectPath);
             } catch (Exception e) {
                 log.error("save AI chat history failed, appId={}", context.appId(), e);
             }
