@@ -13,21 +13,21 @@
               :disabled="!previewReady"
               @click="togglePreviewFullscreen"
             >
-              <FullscreenExitOutlined v-if="previewFullscreen" />
-              <FullscreenOutlined v-else />
+              <FullscreenExitOutlined v-if="previewFullscreen" class="header-icon" />
+              <FullscreenOutlined v-else class="header-icon" />
             </a-button>
           </a-tooltip>
           <a-tooltip title="刷新预览">
             <a-button class="header-icon-button" :disabled="!previewReady" @click="refreshPreview">
-              <ReloadOutlined />
+              <ReloadOutlined class="header-icon" />
             </a-button>
           </a-tooltip>
         </div>
       </div>
-      <a-space>
-        <a-tooltip title="打开生成页面"><a-button class="header-icon-button" :disabled="!previewReady" @click="openPreview"><CodeOutlined /></a-button></a-tooltip>
-        <a-tooltip title="下载代码"><a-button class="header-icon-button" :loading="downloading" :disabled="!previewReady || downloading" @click="downloadCode"><DownloadOutlined /></a-button></a-tooltip>
-        <a-button type="primary" :loading="deploying" :disabled="!previewReady" @click="deploy"><RocketOutlined /> 部署</a-button>
+      <a-space class="header-actions">
+        <a-tooltip title="打开生成页面"><a-button class="header-icon-button" :disabled="!previewReady" @click="openPreview"><CodeOutlined class="header-icon" /></a-button></a-tooltip>
+        <a-tooltip title="下载代码"><a-button class="header-icon-button" :loading="downloading" :disabled="!previewReady || downloading" @click="downloadCode"><DownloadOutlined class="header-icon" /></a-button></a-tooltip>
+        <a-button class="deploy-button" type="primary" :loading="deploying" :disabled="!previewReady" @click="deploy"><RocketOutlined /> 部署</a-button>
       </a-space>
     </header>
 
@@ -40,15 +40,20 @@
           </div>
           <div v-if="historyLoading && !historyInitialized" class="history-loading">正在加载历史对话...</div>
           <div v-else-if="historyInitialized && hasMoreHistory" class="history-load-more">
-            <a-button size="small" type="link" :loading="historyLoadingMore" @click="loadMoreHistory">
+            <a-button class="history-load-more-button" size="small" type="link" :loading="historyLoadingMore" @click="loadMoreHistory">
               <UpOutlined /> 加载更多
             </a-button>
           </div>
-          <article v-for="(item, index) in messages" :key="item.id || index" class="message-row" :class="item.role">
+          <article
+            v-for="(item, index) in messages"
+            :key="item.id || index"
+            class="message-row"
+            :class="{ 'message-row-user': item.role === 'user', 'message-row-assistant': item.role === 'assistant' }"
+          >
             <div v-if="item.role === 'assistant'" class="avatar"><img src="@/assets/logo.svg" alt="" /></div>
-            <div class="bubble">
+            <div class="bubble" :class="{ 'bubble-user': item.role === 'user', 'bubble-assistant': item.role === 'assistant' }">
               <div class="message-role">{{ item.role === 'user' ? '你' : 'Bubble AI' }}</div>
-              <div v-if="item.role === 'assistant'" class="message-content">
+              <div v-if="item.role === 'assistant'" class="message-content message-content-assistant">
                 <template v-if="item.content">
                   <template v-for="(block, blockIndex) in parseMessageBlocks(item.content)" :key="blockIndex">
                     <div v-if="block.type === 'text'" class="message-text">{{ block.content }}</div>
@@ -63,7 +68,7 @@
                 </template>
                 <span v-else>正在思考...</span>
               </div>
-              <div v-else class="message-content">{{ item.content }}</div>
+              <div v-else class="message-content message-content-user">{{ item.content }}</div>
               <span v-if="item.pending" class="typing"><i></i><i></i><i></i></span>
             </div>
             <a-avatar v-if="item.role === 'user'" :size="30" :src="loginUserStore.loginUser.userAvatar" class="avatar user-avatar">
@@ -79,7 +84,7 @@
             </div>
             <div class="composer-footer">
               <span><MessageOutlined /> 继续对话完善页面</span>
-              <a-button type="primary" shape="circle" :loading="generating" :disabled="!canChat || !input.trim()" @click="sendMessage"><ArrowUpOutlined /></a-button>
+              <a-button class="composer-send-button" type="primary" shape="circle" :loading="generating" :disabled="!canChat || !input.trim()" @click="sendMessage"><ArrowUpOutlined /></a-button>
             </div>
           </div>
         </div>
@@ -110,6 +115,7 @@
             <p>{{ previewPlaceholderText }}</p>
             <a-button
               v-if="previewCheckFailed"
+              class="preview-retry-button"
               type="primary"
               ghost
               :loading="previewRebuilding"
@@ -486,10 +492,10 @@ const loadMoreHistory = async () => {
   const list = messageList.value
   const previousHeight = list?.scrollHeight ?? 0
   const previousTop = list?.scrollTop ?? 0
-  const previousCursor = historyCursor
+  const cursorBeforeLoad = historyCursor
   try {
     const params: API.listAppChatHistoryParams = { appId: id, pageSize: HISTORY_PAGE_SIZE }
-    if (historyCursor) params.lastCreateTime = historyCursor
+    if (cursorBeforeLoad) params.lastCreateTime = cursorBeforeLoad
     const res = await listAppChatHistory(params)
     if (res.data.code !== 0) {
       message.error('加载更多失败：' + res.data.message)
@@ -500,7 +506,7 @@ const loadMoreHistory = async () => {
     const addedCount = mergeHistoryMessages(records, 'prepend')
     updateHistoryCursor(records)
     updateHistoryMoreState(page, records, addedCount)
-    if (!records.length || (!addedCount && historyCursor === previousCursor)) hasMoreHistory.value = false
+    if (!records.length || (!addedCount && historyCursor === cursorBeforeLoad)) hasMoreHistory.value = false
     await nextTick()
     const currentList = messageList.value
     if (currentList) currentList.scrollTop = currentList.scrollHeight - previousHeight + previousTop
@@ -916,10 +922,12 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 0;
+  border-color: rgba(17, 24, 39, .1);
   border-radius: 9px;
   color: #172326;
+  background: rgba(255, 255, 255, .76);
 }
-.header-icon-button :deep(.anticon) {
+.header-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -932,24 +940,13 @@ onBeforeUnmount(() => {
   color: #172326;
   background: #fff;
 }
-.studio-header :deep(.ant-space) {
+.header-actions {
   position: relative;
   z-index: 1;
 }
-.studio-header :deep(.ant-btn) {
+.deploy-button {
   height: 38px;
   border-radius: 9px;
-}
-.studio-header :deep(.header-icon-button) {
-  width: 38px;
-  height: 38px;
-  padding: 0;
-}
-.studio-header :deep(.ant-btn-default) {
-  border-color: rgba(17, 24, 39, .1);
-  background: rgba(255, 255, 255, .76);
-}
-.studio-header :deep(.ant-btn-primary) {
   border-color: #1f7aff;
   background: #1f7aff;
   box-shadow: 0 10px 22px rgba(31, 122, 255, .18);
@@ -1049,14 +1046,14 @@ onBeforeUnmount(() => {
   color: #8a989b;
   font-size: 12px;
 }
-.history-load-more :deep(.ant-btn-link) {
+.history-load-more-button {
   height: 30px;
   border-radius: 999px;
   color: #168f88;
   background: rgba(255, 255, 255, .82);
   font-weight: 700;
 }
-.history-load-more :deep(.ant-btn-link:hover) {
+.history-load-more-button:hover {
   background: #f1fbfa;
 }
 .ai-mark img,
@@ -1070,7 +1067,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   margin: 18px 0;
 }
-.message-row.user {
+.message-row-user {
   justify-content: flex-end;
 }
 .avatar {
@@ -1085,12 +1082,12 @@ onBeforeUnmount(() => {
   max-width: 100%;
   min-width: 0;
 }
-.assistant .bubble {
+.bubble-assistant {
   padding: 0;
   border-radius: 0;
   background: transparent;
 }
-.user .bubble {
+.bubble-user {
   max-width: 76%;
   padding: 10px 14px;
   border-radius: 14px;
@@ -1106,10 +1103,10 @@ onBeforeUnmount(() => {
   line-height: 1.85;
   word-break: break-word;
 }
-.assistant .message-content {
+.message-content-assistant {
   max-width: 100%;
 }
-.user .message-content {
+.message-content-user {
   font-size: 14px;
   line-height: 1.65;
 }
@@ -1219,7 +1216,7 @@ onBeforeUnmount(() => {
   color: #8b9699;
   font-size: 12px;
 }
-.composer-footer :deep(.ant-btn-circle) {
+.composer-send-button {
   background: #aeb5bb;
 }
 .preview-pane {
@@ -1365,7 +1362,7 @@ onBeforeUnmount(() => {
   color: #98a5a6;
   line-height: 1.7;
 }
-.empty-preview :deep(.ant-btn) {
+.preview-retry-button {
   margin-top: 14px;
   border-radius: 10px;
 }
