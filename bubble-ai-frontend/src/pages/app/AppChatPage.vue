@@ -98,9 +98,19 @@
         <div class="preview-stage">
           <iframe v-if="previewReady" :key="previewKey" :src="previewUrl" title="生成应用预览"></iframe>
           <div v-else class="empty-preview">
-            <div class="preview-illustration"><CodeOutlined /></div>
-            <h2>{{ generating ? '正在搭建你的应用' : '等待生成网页' }}</h2>
-            <p>{{ generating ? 'AI 正在编写页面文件，完成后会自动在这里展示。' : '在左侧输入你的想法，生成结果会出现在这里。' }}</p>
+            <div v-if="previewLoading" class="preview-loader" aria-hidden="true">
+              <div class="loader-toolbar"><span></span><span></span><span></span></div>
+              <div class="loader-canvas">
+                <i></i><i></i><i></i><i></i>
+                <b></b>
+              </div>
+            </div>
+            <div v-else class="preview-illustration"><CodeOutlined /></div>
+            <h2>{{ previewPlaceholderTitle }}</h2>
+            <p>{{ previewPlaceholderText }}</p>
+            <a-button v-if="previewCheckFailed" type="primary" ghost @click="retryPreviewCheck">
+              <ReloadOutlined /> 重新检查
+            </a-button>
           </div>
         </div>
       </section>
@@ -141,7 +151,7 @@ import { deployApp, getAppVoById } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { APP_PREVIEW_BASE_URL } from '@/config/env'
+import { APP_API_BASE_URL, APP_PREVIEW_BASE_URL } from '@/config/env'
 
 type ChatMessage = { id?: string; role: 'user' | 'assistant'; content: string; pending?: boolean; createTime?: string }
 type MessageBlock =
@@ -177,7 +187,26 @@ let typewriterTimer: number | undefined
 let typewriterQueue = ''
 let streamEnded = false
 let coverSyncId = 0
-const previewUrl = computed(() => `${APP_PREVIEW_BASE_URL}/${app.value.codeGenType || 'html'}_${id}/`)
+let previewCheckId = 0
+const generatedCodeGenType = ref<string>()
+const previewEntryUrl = ref('')
+const previewChecking = ref(false)
+const previewCheckFailed = ref(false)
+const historyIndicatesReactProject = ref(false)
+const previewUrl = computed(() => previewEntryUrl.value || buildPreviewUrl(getPreferredPreviewCodeGenType()))
+const previewLoading = computed(() => generating.value || previewChecking.value)
+const previewPlaceholderTitle = computed(() => {
+  if (generating.value) return '正在搭建你的应用'
+  if (previewChecking.value) return '正在构建项目预览'
+  if (previewCheckFailed.value) return '预览还没准备好'
+  return '等待生成网页'
+})
+const previewPlaceholderText = computed(() => {
+  if (generating.value) return 'AI 正在编写项目文件，完成后会自动进入构建检查。'
+  if (previewChecking.value) return '后端正在安装依赖并构建 React 项目，页面可访问后会自动展示。'
+  if (previewCheckFailed.value) return '构建可能仍在继续，可以稍后重新检查预览。'
+  return '在左侧输入你的想法，生成结果会出现在这里。'
+})
 const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
@@ -198,11 +227,102 @@ const AUTO_SCROLL_THRESHOLD = 24
 const HISTORY_PAGE_SIZE = 10
 const COVER_SYNC_RETRY_COUNT = 5
 const COVER_SYNC_RETRY_DELAY = 800
+const REACT_PROJECT_CODE_GEN_TYPE = 'react_project'
+const DEFAULT_CODE_GEN_TYPE = 'html'
+const PREVIEW_READY_RETRY_COUNT = 45
+const PREVIEW_READY_RETRY_DELAY = 1200
 let resizeStartX = 0
 let resizeStartWidth = 0
 let historyCursor: string | undefined
 let loadedHistoryTotal = 0
 const loadedHistoryKeys = new Set<string>()
+
+const normalizeCodeGenType = (codeGenType?: string) => (codeGenType || '').trim()
+const isReactProjectType = (codeGenType?: string) => normalizeCodeGenType(codeGenType) === REACT_PROJECT_CODE_GEN_TYPE
+const getPreferredPreviewCodeGenType = () =>
+  normalizeCodeGenType(generatedCodeGenType.value)
+  || normalizeCodeGenType(app.value.codeGenType)
+  || DEFAULT_CODE_GEN_TYPE
+const buildPreviewUrl = (codeGenType: string) => {
+  const normalizedType = normalizeCodeGenType(codeGenType) || DEFAULT_CODE_GEN_TYPE
+  const dirName = `${normalizedType}_${id}`
+  return isReactProjectType(normalizedType)
+    ? `${APP_PREVIEW_BASE_URL}/${dirName}/dist/index.html`
+    : `${APP_PREVIEW_BASE_URL}/${dirName}/`
+}
+const pushUnique = <T,>(list: T[], item: T) => {
+  if (!list.includes(item)) list.push(item)
+}
+const getPreviewCodeGenCandidates = () => {
+  const candidates: string[] = []
+  const appCodeGenType = normalizeCodeGenType(app.value.codeGenType)
+  const generatedType = normalizeCodeGenType(generatedCodeGenType.value)
+  if (generatedType) pushUnique(candidates, generatedType)
+  if (historyIndicatesReactProject.value || isReactProjectType(appCodeGenType)) {
+    pushUnique(candidates, REACT_PROJECT_CODE_GEN_TYPE)
+  }
+  if (appCodeGenType) pushUnique(candidates, appCodeGenType)
+  pushUnique(candidates, REACT_PROJECT_CODE_GEN_TYPE)
+  pushUnique(candidates, DEFAULT_CODE_GEN_TYPE)
+  pushUnique(candidates, 'multi_file')
+  return candidates
+}
+const addCacheBust = (url: string) => `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`
+const isPreviewUrlAvailable = async (url: string) => {
+  try {
+    const res = await fetch(addCacheBust(url), {
+      cache: 'no-store',
+      credentials: 'include',
+    })
+    const contentType = res.headers.get('content-type') || ''
+    return res.ok && contentType.includes('text/html')
+  } catch {
+    return false
+  }
+}
+const shouldCheckPreview = () => Boolean(loadedHistoryTotal >= 2 || loadedHistoryKeys.size >= 2 || generatedCodeGenType.value)
+const resetPreviewState = () => {
+  previewReady.value = false
+  previewEntryUrl.value = ''
+  previewChecking.value = false
+  previewCheckFailed.value = false
+}
+const sleep = (duration: number) => new Promise((resolve) => window.setTimeout(resolve, duration))
+const resolvePreviewReady = async (retryCount = 1) => {
+  const currentCheckId = ++previewCheckId
+  const attempts = Math.max(1, retryCount)
+  previewReady.value = false
+  previewEntryUrl.value = ''
+  previewChecking.value = true
+  previewCheckFailed.value = false
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const candidates = getPreviewCodeGenCandidates()
+    for (const codeGenType of candidates) {
+      if (currentCheckId !== previewCheckId) return false
+      const candidateUrl = buildPreviewUrl(codeGenType)
+      if (await isPreviewUrlAvailable(candidateUrl)) {
+        if (currentCheckId !== previewCheckId) return false
+        previewEntryUrl.value = candidateUrl
+        previewReady.value = true
+        previewChecking.value = false
+        previewCheckFailed.value = false
+        if (isReactProjectType(codeGenType)) {
+          generatedCodeGenType.value = REACT_PROJECT_CODE_GEN_TYPE
+        }
+        previewKey.value++
+        return true
+      }
+    }
+    if (attempt < attempts - 1) await sleep(PREVIEW_READY_RETRY_DELAY)
+  }
+
+  if (currentCheckId === previewCheckId) {
+    previewChecking.value = false
+    previewCheckFailed.value = true
+  }
+  return false
+}
 
 const previewToolbarLeft = computed(() => {
   const previewLeft = previewFullscreen.value
@@ -281,12 +401,19 @@ const toChatMessage = (history: API.ChatHistory): ChatMessage => ({
   createTime: history.createTime,
 })
 const getHistoryTotal = (page?: API.PageChatHistory) => Number(page?.totalRow ?? 0)
+const isReactProjectHistoryContent = (content?: string) =>
+  /\[(?:工具调用|选择工具)]\s*写入文件|package\.json|vite\.config\.(?:js|mjs|ts)|src\/main\.jsx/.test(content || '')
 const mergeHistoryMessages = (records: API.ChatHistory[], mode: 'replace' | 'prepend') => {
+  if (mode === 'replace') historyIndicatesReactProject.value = false
   const newMessages = sortHistoryAsc(records).reduce<ChatMessage[]>((result, history) => {
     const key = getHistoryKey(history)
     if (loadedHistoryKeys.has(key)) return result
     loadedHistoryKeys.add(key)
-    result.push(toChatMessage(history))
+    const chatMessage = toChatMessage(history)
+    if (chatMessage.role === 'assistant' && isReactProjectHistoryContent(chatMessage.content)) {
+      historyIndicatesReactProject.value = true
+    }
+    result.push(chatMessage)
     return result
   }, [])
   messages.value = mode === 'replace' ? newMessages : [...newMessages, ...messages.value]
@@ -306,7 +433,11 @@ const updateHistoryMoreState = (page: API.PageChatHistory | undefined, records: 
   hasMoreHistory.value = records.length >= HISTORY_PAGE_SIZE && addedCount > 0
 }
 const syncPreviewReadyWithHistory = () => {
-  previewReady.value = Boolean(app.value.codeGenType || loadedHistoryTotal >= 2 || loadedHistoryKeys.size >= 2)
+  if (!shouldCheckPreview()) {
+    resetPreviewState()
+    return
+  }
+  void resolvePreviewReady()
 }
 const loadInitialHistory = async () => {
   historyLoading.value = true
@@ -373,7 +504,6 @@ const loadApp = async () => {
   if (!res.data.data) return message.error('获取应用失败：' + res.data.message)
   app.value = res.data.data
   appLoaded.value = true
-  syncPreviewReadyWithHistory()
   const historyLoaded = await loadInitialHistory()
   if (route.query.auto === '1') {
     await router.replace({ path: route.path })
@@ -382,7 +512,6 @@ const loadApp = async () => {
     send(app.value.initPrompt)
   }
 }
-const sleep = (duration: number) => new Promise((resolve) => window.setTimeout(resolve, duration))
 const syncGeneratedAppInfo = async () => {
   const currentSyncId = ++coverSyncId
   const previousCover = app.value.cover
@@ -411,8 +540,14 @@ const send = (content: string) => {
   activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true }) - 1
   input.value = ''
   generating.value = true
+  generatedCodeGenType.value = REACT_PROJECT_CODE_GEN_TYPE
+  historyIndicatesReactProject.value = true
+  previewCheckId++
   previewReady.value = false
-  const source = new EventSource(`http://localhost:8123/api/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
+  previewEntryUrl.value = ''
+  previewChecking.value = false
+  previewCheckFailed.value = false
+  const source = new EventSource(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
   eventSource = source
   source.onmessage = (event) => {
     const assistant = getActiveAssistant()
@@ -528,15 +663,18 @@ const completeGeneration = () => {
   activeAssistantIndex = undefined
   typewriterQueue = ''
   streamEnded = false
-  app.value.codeGenType ||= 'html'
-  previewReady.value = true
-  refreshPreview()
+  generatedCodeGenType.value = REACT_PROJECT_CODE_GEN_TYPE
+  previewReady.value = false
+  previewEntryUrl.value = ''
+  previewCheckFailed.value = false
+  void resolvePreviewReady(PREVIEW_READY_RETRY_COUNT)
   void syncGeneratedAppInfo()
   scrollToBottom()
 }
 const sendMessage = () => send(input.value)
 const handleEnter = (event: KeyboardEvent) => { if (!event.shiftKey) { event.preventDefault(); sendMessage() } }
 const refreshPreview = () => previewKey.value++
+const retryPreviewCheck = () => { void resolvePreviewReady(PREVIEW_READY_RETRY_COUNT) }
 const togglePreviewFullscreen = () => { if (previewReady.value) previewFullscreen.value = !previewFullscreen.value }
 const openPreview = () => window.open(previewUrl.value, '_blank')
 const downloadCode = () => { window.open(previewUrl.value, '_blank'); message.info('已打开生成资源，可在新页面中查看或保存代码') }
@@ -560,6 +698,7 @@ onMounted(loadApp)
 onBeforeUnmount(() => {
   previewFullscreen.value = false
   coverSyncId++
+  previewCheckId++
   eventSource?.close()
   eventSource = undefined
   resetTypewriter()
@@ -984,7 +1123,96 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 32px;
   text-align: center;
+}
+.preview-loader {
+  position: relative;
+  width: min(320px, 62%);
+  overflow: hidden;
+  border: 1px solid rgba(16, 66, 94, .14);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 20px 42px rgba(28, 47, 66, .11);
+}
+.preview-loader::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 18%, rgba(31, 122, 255, .11) 45%, transparent 72%);
+  content: "";
+  transform: translateX(-100%);
+  animation: preview-sweep 1.65s ease-in-out infinite;
+}
+.loader-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 12px;
+  border-bottom: 1px solid #edf2f6;
+  background: #fbfcfe;
+}
+.loader-toolbar span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d7e2eb;
+}
+.loader-toolbar span:nth-child(1) {
+  background: #ffb86a;
+}
+.loader-toolbar span:nth-child(2) {
+  background: #54c7ec;
+}
+.loader-toolbar span:nth-child(3) {
+  background: #37c99b;
+}
+.loader-canvas {
+  position: relative;
+  display: grid;
+  min-height: 150px;
+  grid-template-columns: 1.2fr .8fr;
+  gap: 12px;
+  padding: 20px;
+  background:
+    linear-gradient(90deg, rgba(146, 163, 176, .08) 1px, transparent 1px),
+    linear-gradient(rgba(146, 163, 176, .08) 1px, transparent 1px),
+    #fff;
+  background-size: 22px 22px;
+}
+.loader-canvas i {
+  display: block;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #dfe8ee, #b9d8ef, #dfe8ee);
+  background-size: 220% 100%;
+  animation: preview-line 1.2s ease-in-out infinite;
+}
+.loader-canvas i:nth-child(1) {
+  grid-column: 1 / 3;
+  width: 72%;
+}
+.loader-canvas i:nth-child(2) {
+  width: 88%;
+  animation-delay: .12s;
+}
+.loader-canvas i:nth-child(3) {
+  width: 64%;
+  animation-delay: .24s;
+}
+.loader-canvas i:nth-child(4) {
+  grid-column: 1 / 3;
+  width: 54%;
+  animation-delay: .36s;
+}
+.loader-canvas b {
+  position: absolute;
+  right: 24px;
+  bottom: 22px;
+  width: 46px;
+  height: 46px;
+  border: 3px solid rgba(24, 166, 156, .18);
+  border-top-color: #18a69c;
+  border-radius: 50%;
+  animation: preview-spin .9s linear infinite;
 }
 .preview-illustration {
   display: grid;
@@ -1003,6 +1231,28 @@ onBeforeUnmount(() => {
   max-width: 360px;
   color: #98a5a6;
   line-height: 1.7;
+}
+.empty-preview :deep(.ant-btn) {
+  margin-top: 14px;
+  border-radius: 10px;
+}
+@keyframes preview-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes preview-line {
+  0%, 100% {
+    background-position: 0 0;
+  }
+  50% {
+    background-position: 100% 0;
+  }
+}
+@keyframes preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .version-bar {
   padding: 18px 10px;

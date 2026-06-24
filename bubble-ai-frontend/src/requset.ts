@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { message } from 'ant-design-vue'
+import { APP_API_BASE_URL } from '@/config/env'
 
 const myAxios = axios.create({
-  baseURL: 'http://localhost:8123/api',
+  baseURL: APP_API_BASE_URL,
   timeout: 60000,
   withCredentials: true,
 })
