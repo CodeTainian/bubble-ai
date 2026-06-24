@@ -312,7 +312,7 @@ public class AppController {
                                        HttpServletRequest request) {
         ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
         Long appId = appDeployRequest.getAppId();
-        ThrowUtils.throwIf(appId==null||appId<0,ErrorCode.PARAMS_ERROR,"应用ID不能为空");
+        ThrowUtils.throwIf(appId==null||appId<=0,ErrorCode.PARAMS_ERROR,"应用ID不能为空");
         //获取当前登录用户
         User loginUser = userService.getLoginUser(request);
         //调用服务部署应用
@@ -320,5 +320,21 @@ public class AppController {
         return ResultUtils.success(deployedAppUrl);
     }
 
-}
+    /**
+     * 重新构建应用预览
+     * @param appDeployRequest 应用请求
+     * @param request 请求
+     * @return 是否成功触发构建
+     */
+    @PostMapping("/rebuild")
+    public BaseResponse<Boolean> rebuildApp(@RequestBody AppDeployRequest appDeployRequest,
+                                             HttpServletRequest request) {
+        ThrowUtils.throwIf(appDeployRequest == null, ErrorCode.PARAMS_ERROR);
+        Long appId = appDeployRequest.getAppId();
+        ThrowUtils.throwIf(appId==null||appId<=0,ErrorCode.PARAMS_ERROR,"应用ID不能为空");
+        User loginUser = userService.getLoginUser(request);
+        Boolean result = appService.rebuildApp(appId, loginUser);
+        return ResultUtils.success(result);
+    }
 
+}

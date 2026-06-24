@@ -1,6 +1,7 @@
 package com.bubble.bubbleai.core.handler;
 
 import cn.hutool.core.util.StrUtil;
+import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
@@ -9,6 +10,8 @@ import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
+
+import java.io.File;
 
 /**
  * 流式响应处理通用模板。
@@ -52,13 +55,32 @@ public abstract class AbstractStreamHandler implements StreamHandler {
                         aiMessage,
                         null
                 );
-                String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR+"/react_project_"+context.appId();
-                reactProjectBuilder.buildProjectAsync(projectPath);
             } catch (Exception e) {
                 log.error("save AI chat history failed, appId={}", context.appId(), e);
             }
         }
+        if (CodeGenTypeEnum.REACT_PROJECT.equals(context.codeGenType())) {
+            buildReactProjectAndGenerateCover(context);
+            return;
+        }
         appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
+    }
+
+    private void buildReactProjectAndGenerateCover(StreamHandleContext context) {
+        String projectDirName = CodeGenTypeEnum.REACT_PROJECT.getValue() + "_" + context.appId();
+        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + projectDirName;
+        reactProjectBuilder.buildProjectAsync(projectPath)
+                .thenAccept(buildSuccess -> {
+                    if (Boolean.TRUE.equals(buildSuccess)) {
+                        appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
+                    } else {
+                        log.warn("skip generating app cover because React project build failed, appId={}", context.appId());
+                    }
+                })
+                .exceptionally(error -> {
+                    log.error("build React project before generating app cover failed, appId={}", context.appId(), error);
+                    return null;
+                });
     }
 
     private void saveErrorMessage(StreamHandleContext context, Throwable error) {

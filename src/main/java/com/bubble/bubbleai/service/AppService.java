@@ -65,6 +65,14 @@ public interface AppService extends IService<App> {
     String deployApp(Long appId,User loginUser);
 
     /**
+     * 重新构建应用预览
+     * @param appId 应用ID
+     * @param loginUser 登录用户
+     * @return 是否成功触发构建
+     */
+    Boolean rebuildApp(Long appId, User loginUser);
+
+    /**
      * generate app cover
      * @param appId;
      * @param codeGenType;
@@ -72,4 +80,3 @@ public interface AppService extends IService<App> {
     void generateAppCover(Long appId, String codeGenType);
 
 }
-

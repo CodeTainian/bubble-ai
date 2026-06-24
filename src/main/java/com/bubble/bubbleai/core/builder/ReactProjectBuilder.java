@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -14,15 +15,19 @@ public class ReactProjectBuilder {
     /**
      * 异步构建项目（不阻塞主流程）
      * @param projectPath 项目路径
+     * @return 构建结果 Future
      */
-    public void buildProjectAsync(String projectPath){
+    public CompletableFuture<Boolean> buildProjectAsync(String projectPath){
+        CompletableFuture<Boolean> buildFuture = new CompletableFuture<>();
         Thread.ofVirtual().name("react-builder-"+System.currentTimeMillis()).start(()->{
             try {
-                buildProject(projectPath);
+                buildFuture.complete(buildProject(projectPath));
             }catch (Exception e){
                 log.error("异步构建React项目时发生异常: {}",e.getMessage(),e);
+                buildFuture.complete(false);
             }
         });
+        return buildFuture;
     }
 
     /**

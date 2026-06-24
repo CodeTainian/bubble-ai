@@ -155,6 +155,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         //4.获取应用的代码生成类型
         app.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
+        App updateCodeGenTypeApp = new App();
+        updateCodeGenTypeApp.setId(appId);
+        updateCodeGenTypeApp.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
+        boolean updateCodeGenTypeResult = this.updateById(updateCodeGenTypeApp);
+        ThrowUtils.throwIf(!updateCodeGenTypeResult,ErrorCode.OPERATION_ERROR,"更新应用生成类型失败");
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         if (codeGenTypeEnum == null) {
@@ -223,6 +228,64 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
        // return AppConstant.CODE_DEPLOY_HOST + File.separator + deployKey;
         return String.format("%s/%s/",AppConstant.CODE_DEPLOY_HOST,deployKey);
 
+    }
+
+    @Override
+    public Boolean rebuildApp(Long appId, User loginUser) {
+        ThrowUtils.throwIf(appId==null||appId<=0,ErrorCode.PARAMS_ERROR,"应用ID不能为空");
+        ThrowUtils.throwIf(loginUser==null,ErrorCode.NOT_LOGIN_ERROR,"用户未登录");
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app==null,ErrorCode.NOT_FOUND_ERROR,"应用不存在");
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR,"用户无访问权限");
+        }
+
+        CodeGenTypeEnum codeGenTypeEnum = resolvePreviewBuildType(app, appId);
+        String sourceDirName = codeGenTypeEnum.getValue() + "_" + appId;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
+        File sourceDir = new File(sourceDirPath);
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"应用代码不存在，请先生成代码");
+        }
+
+        if (CodeGenTypeEnum.REACT_PROJECT.equals(codeGenTypeEnum)) {
+            App updateApp = new App();
+            updateApp.setId(appId);
+            updateApp.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
+            boolean updateResult = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updateResult,ErrorCode.OPERATION_ERROR,"更新应用生成类型失败");
+            reactProjectBuilder.buildProjectAsync(sourceDirPath)
+                    .thenAccept(buildSuccess -> {
+                        if (Boolean.TRUE.equals(buildSuccess)) {
+                            appCoverGenerator.generateAsync(appId, codeGenTypeEnum);
+                        } else {
+                            log.warn("rebuild React project failed, appId={}", appId);
+                        }
+                    })
+                    .exceptionally(error -> {
+                        log.error("rebuild React project failed, appId={}", appId, error);
+                        return null;
+                    });
+            return true;
+        }
+
+        appCoverGenerator.generateAsync(appId, codeGenTypeEnum);
+        return true;
+    }
+
+    private CodeGenTypeEnum resolvePreviewBuildType(App app, Long appId) {
+        File reactProjectDir = new File(
+                AppConstant.CODE_OUTPUT_ROOT_DIR,
+                CodeGenTypeEnum.REACT_PROJECT.getValue() + "_" + appId
+        );
+        if (reactProjectDir.exists() && reactProjectDir.isDirectory()) {
+            return CodeGenTypeEnum.REACT_PROJECT;
+        }
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(app.getCodeGenType());
+        if (codeGenTypeEnum == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的应用生成类型");
+        }
+        return codeGenTypeEnum;
     }
 
     @Override

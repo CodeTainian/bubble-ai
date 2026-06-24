@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -56,20 +57,28 @@ public class AppCoverGenerator {
             return;
         }
         String sourceDirName = codeGenType + "_" + appId;
-        String previewUrl = String.format("%s/%s/", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
+        String previewUrl = buildPreviewUrl(sourceDirName, codeGenType);
         String coverFileName = sourceDirName + ".png";
         FileUtil.mkdir(CaptureConstant.CAPTURE_OUTPUT_COVER);
         String coverSavePath = CaptureConstant.CAPTURE_OUTPUT_COVER + File.separator + coverFileName;
 
         screenshotService.captureHomePage(previewUrl, coverSavePath);
 
-        String coverUrl = CaptureConstant.CAPTURE_HOST + "/output_covers/" + coverFileName;
+        String coverUrl = CaptureConstant.CAPTURE_HOST + "/output_covers/" + coverFileName + "?t=" + System.currentTimeMillis();
         App updateApp = new App();
         updateApp.setId(appId);
         updateApp.setCover(coverUrl);
+        updateApp.setUpdateTime(LocalDateTime.now());
         int updated = appMapper.update(updateApp);
         if (updated <= 0) {
             log.warn("app cover generated but database update failed, appId={}, coverUrl={}", appId, coverUrl);
         }
+    }
+
+    private String buildPreviewUrl(String sourceDirName, String codeGenType) {
+        if (CodeGenTypeEnum.REACT_PROJECT.getValue().equals(codeGenType)) {
+            return String.format("%s/%s/dist/index.html", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
+        }
+        return String.format("%s/%s/", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
     }
 }
