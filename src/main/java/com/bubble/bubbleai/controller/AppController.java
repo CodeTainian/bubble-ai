@@ -67,7 +67,7 @@ public class AppController {
         app.setUserId(loginUser.getId());
         app.setAppName(initPrompt.substring(0,Math.min(initPrompt.length(),12)));//前12位作为应用名称
         //Todo 是否需要处理默认优先级  app.setPriority(0); // 默认优先级为0
-        app.setCodeGenType(CodeGenTypeEnum.MULTI_FIlE.getValue());
+        app.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
         boolean result = appService.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
         return ResultUtils.success(app.getId());
