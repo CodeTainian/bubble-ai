@@ -108,7 +108,14 @@
             <div v-else class="preview-illustration"><CodeOutlined /></div>
             <h2>{{ previewPlaceholderTitle }}</h2>
             <p>{{ previewPlaceholderText }}</p>
-            <a-button v-if="previewCheckFailed" type="primary" ghost @click="retryPreviewCheck">
+            <a-button
+              v-if="previewCheckFailed"
+              type="primary"
+              ghost
+              :loading="previewRebuilding"
+              :disabled="previewRebuilding"
+              @click="retryPreviewCheck"
+            >
               <ReloadOutlined /> 重新检查
             </a-button>
           </div>
@@ -147,7 +154,7 @@ import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
 import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
-import { deployApp, getAppVoById } from '@/api/appController'
+import { deployApp, getAppVoById, rebuildApp } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
@@ -192,17 +199,20 @@ const generatedCodeGenType = ref<string>()
 const previewEntryUrl = ref('')
 const previewChecking = ref(false)
 const previewCheckFailed = ref(false)
+const previewRebuilding = ref(false)
 const historyIndicatesReactProject = ref(false)
 const previewUrl = computed(() => previewEntryUrl.value || buildPreviewUrl(getPreferredPreviewCodeGenType()))
-const previewLoading = computed(() => generating.value || previewChecking.value)
+const previewLoading = computed(() => generating.value || previewChecking.value || previewRebuilding.value)
 const previewPlaceholderTitle = computed(() => {
   if (generating.value) return '正在搭建你的应用'
+  if (previewRebuilding.value) return '正在重新打包预览'
   if (previewChecking.value) return '正在构建项目预览'
   if (previewCheckFailed.value) return '预览还没准备好'
   return '等待生成网页'
 })
 const previewPlaceholderText = computed(() => {
   if (generating.value) return 'AI 正在编写项目文件，完成后会自动进入构建检查。'
+  if (previewRebuilding.value) return '后端已开始重新打包，完成后会继续检查预览。'
   if (previewChecking.value) return '后端正在安装依赖并构建 React 项目，页面可访问后会自动展示。'
   if (previewCheckFailed.value) return '构建可能仍在继续，可以稍后重新检查预览。'
   return '在左侧输入你的想法，生成结果会出现在这里。'
@@ -225,11 +235,11 @@ const PREVIEW_TOOLBAR_OFFSET = 17
 const TYPEWRITER_INTERVAL = 18
 const AUTO_SCROLL_THRESHOLD = 24
 const HISTORY_PAGE_SIZE = 10
-const COVER_SYNC_RETRY_COUNT = 5
-const COVER_SYNC_RETRY_DELAY = 800
+const COVER_SYNC_POLL_DELAY = 1500
 const REACT_PROJECT_CODE_GEN_TYPE = 'react_project'
 const DEFAULT_CODE_GEN_TYPE = 'html'
 const PREVIEW_READY_RETRY_COUNT = 45
+const REBUILD_PREVIEW_READY_RETRY_COUNT = 300
 const PREVIEW_READY_RETRY_DELAY = 1200
 let resizeStartX = 0
 let resizeStartWidth = 0
@@ -286,6 +296,7 @@ const resetPreviewState = () => {
   previewEntryUrl.value = ''
   previewChecking.value = false
   previewCheckFailed.value = false
+  previewRebuilding.value = false
 }
 const sleep = (duration: number) => new Promise((resolve) => window.setTimeout(resolve, duration))
 const resolvePreviewReady = async (retryCount = 1) => {
@@ -515,19 +526,28 @@ const loadApp = async () => {
 const syncGeneratedAppInfo = async () => {
   const currentSyncId = ++coverSyncId
   const previousCover = app.value.cover
-  for (let attempt = 0; attempt <= COVER_SYNC_RETRY_COUNT; attempt++) {
-    if (attempt) await sleep(COVER_SYNC_RETRY_DELAY)
+  const previousUpdateTime = app.value.updateTime
+  while (currentSyncId === coverSyncId) {
     if (currentSyncId !== coverSyncId) return
     try {
       const res = await getAppVoById({ id })
       if (currentSyncId !== coverSyncId) return
-      if (res.data.code !== 0 || !res.data.data) continue
-      app.value = { ...app.value, ...res.data.data }
-      if (res.data.data.cover) versionCoverRefreshKey.value = Date.now()
-      if (res.data.data.cover && res.data.data.cover !== previousCover) return
+      if (res.data.code === 0 && res.data.data) {
+        app.value = { ...app.value, ...res.data.data }
+        const nextCover = res.data.data.cover
+        const nextUpdateTime = res.data.data.updateTime
+        if (nextCover) {
+          versionCoverRefreshKey.value = Date.now()
+          const coverChanged = nextCover !== previousCover
+          const coverCreated = !previousCover
+          const coverUpdated = Boolean(previousUpdateTime && nextUpdateTime && nextUpdateTime !== previousUpdateTime)
+          if (coverCreated || coverChanged || coverUpdated) return
+        }
+      }
     } catch {
       // 生成结果已经可预览，封面同步失败时保持当前封面，下一次进入页面仍会加载最新数据。
     }
+    await sleep(COVER_SYNC_POLL_DELAY)
   }
 }
 const send = (content: string) => {
@@ -547,6 +567,7 @@ const send = (content: string) => {
   previewEntryUrl.value = ''
   previewChecking.value = false
   previewCheckFailed.value = false
+  previewRebuilding.value = false
   const source = new EventSource(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
   eventSource = source
   source.onmessage = (event) => {
@@ -667,6 +688,7 @@ const completeGeneration = () => {
   previewReady.value = false
   previewEntryUrl.value = ''
   previewCheckFailed.value = false
+  previewRebuilding.value = false
   void resolvePreviewReady(PREVIEW_READY_RETRY_COUNT)
   void syncGeneratedAppInfo()
   scrollToBottom()
@@ -674,7 +696,29 @@ const completeGeneration = () => {
 const sendMessage = () => send(input.value)
 const handleEnter = (event: KeyboardEvent) => { if (!event.shiftKey) { event.preventDefault(); sendMessage() } }
 const refreshPreview = () => previewKey.value++
-const retryPreviewCheck = () => { void resolvePreviewReady(PREVIEW_READY_RETRY_COUNT) }
+const retryPreviewCheck = async () => {
+  if (previewRebuilding.value || previewChecking.value) return
+  previewRebuilding.value = true
+  previewCheckFailed.value = false
+  previewReady.value = false
+  previewEntryUrl.value = ''
+  try {
+    const res = await rebuildApp({ appId: id })
+    if (res.data.code !== 0 || !res.data.data) {
+      message.error('重新打包失败：' + (res.data.message || '请稍后再试'))
+      previewCheckFailed.value = true
+      return
+    }
+    void syncGeneratedAppInfo()
+  } catch {
+    message.error('重新打包失败，请稍后再试')
+    previewCheckFailed.value = true
+    return
+  } finally {
+    previewRebuilding.value = false
+  }
+  void resolvePreviewReady(REBUILD_PREVIEW_READY_RETRY_COUNT)
+}
 const togglePreviewFullscreen = () => { if (previewReady.value) previewFullscreen.value = !previewFullscreen.value }
 const openPreview = () => window.open(previewUrl.value, '_blank')
 const downloadCode = () => { window.open(previewUrl.value, '_blank'); message.info('已打开生成资源，可在新页面中查看或保存代码') }
@@ -699,6 +743,7 @@ onBeforeUnmount(() => {
   previewFullscreen.value = false
   coverSyncId++
   previewCheckId++
+  previewRebuilding.value = false
   eventSource?.close()
   eventSource = undefined
   resetTypewriter()
