@@ -70,7 +70,24 @@ export default defineConfig({
   }
 })
 
-2）路由配置必须使用 HashRouter，避免服务器端路由配置问题。
+2）index.html 必须包含 React 入口脚本，否则 Vite build 可能成功但页面空白。
+
+index.html 参考：
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>React App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+3）路由配置必须使用 HashRouter，避免服务器端路由配置问题。
 
 src/router/index.jsx 参考：
 
@@ -86,7 +103,7 @@ const router = createHashRouter([
 
 export default router
 
-3）src/main.jsx 参考：
+4）src/main.jsx 参考：
 
 import React from 'react'
 import ReactDOM from 'react-dom/client'
@@ -100,7 +117,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 )
 
-4）package.json 文件参考：
+5）package.json 文件参考：
 
 {
   "scripts": {
@@ -199,6 +216,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 6. 所有路由在刷新后不会出现 404。
 7. 所有组件引用路径正确，不存在文件缺失问题。
 8. 所有 CSS、JSX 语法正确，不产生构建错误。
+9. src/router/index.jsx 中 import 的每个页面组件必须创建对应文件；不要引用未创建的页面，例如导入 '@/pages/ProjectDetail' 时必须写入 src/pages/ProjectDetail.jsx。
 
 ## 生成行为要求
 
@@ -220,7 +238,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 第八步：根据项目需求创建 pages、components、styles 等文件。
 
-第九步：确认所有必要文件已经创建。
+第九步：确认所有必要文件已经创建，并逐一检查所有 import 路径对应的文件真实存在。
 
 第十步：输出简短的生成完毕提示。
 

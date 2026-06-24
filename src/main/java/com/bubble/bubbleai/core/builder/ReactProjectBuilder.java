@@ -1,10 +1,14 @@
 package com.bubble.bubbleai.core.builder;
 
-import cn.hutool.core.util.RuntimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -48,6 +52,9 @@ public class ReactProjectBuilder {
             log.error("package.json 文件不存在: {}", packageJson.getAbsolutePath());
             return false;
         }
+        if (!ensureViteEntryScript(projectDir)) {
+            return false;
+        }
         log.info("开始构建 React 项目: {}", projectPath);
         // 执行 npm install
         if (!executeNpmInstall(projectDir)) {
@@ -67,6 +74,39 @@ public class ReactProjectBuilder {
         }
         log.info("React 项目构建成功，dist 目录: {}", distDir.getAbsolutePath());
         return true;
+    }
+
+    /**
+     * Vite 的入口脚本必须写在 index.html 中。若模型漏写，build 会成功但 dist/index.html 只有空 root。
+     */
+    private boolean ensureViteEntryScript(File projectDir) {
+        File indexHtml = new File(projectDir, "index.html");
+        if (!indexHtml.exists()) {
+            log.error("index.html 文件不存在: {}", indexHtml.getAbsolutePath());
+            return false;
+        }
+        File mainJsx = new File(projectDir, "src/main.jsx");
+        if (!mainJsx.exists()) {
+            log.error("src/main.jsx 文件不存在: {}", mainJsx.getAbsolutePath());
+            return false;
+        }
+        try {
+            Path indexPath = indexHtml.toPath();
+            String html = Files.readString(indexPath, StandardCharsets.UTF_8);
+            if (html.contains("src/main.jsx")) {
+                return true;
+            }
+            String entryScript = "    <script type=\"module\" src=\"/src/main.jsx\"></script>\n";
+            String updatedHtml = html.contains("</body>")
+                    ? html.replace("</body>", entryScript + "  </body>")
+                    : html + "\n" + entryScript;
+            Files.writeString(indexPath, updatedHtml, StandardCharsets.UTF_8);
+            log.warn("index.html 缺少 Vite 入口脚本，已自动补充: {}", indexHtml.getAbsolutePath());
+            return true;
+        } catch (Exception e) {
+            log.error("检查或修复 index.html 入口脚本失败: {}", e.getMessage(), e);
+            return false;
+        }
     }
 
     /**
@@ -111,30 +151,53 @@ public class ReactProjectBuilder {
     private boolean executeCommand(File workingDir, String command, int timeoutSeconds) {
         try {
             log.info("在目录 {} 中执行命令: {}", workingDir.getAbsolutePath(), command);
-            Process process = RuntimeUtil.exec(
-                    null,
-                    workingDir,
-                    command.split("\\s+") // 命令分割为数组
-            );
+            StringBuilder output = new StringBuilder();
+            Process process = new ProcessBuilder(command.split("\\s+"))
+                    .directory(workingDir)
+                    .redirectErrorStream(true)
+                    .start();
+            Thread outputReader = Thread.ofVirtual().name("react-build-output-" + System.currentTimeMillis()).start(() -> {
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        output.append(line).append(System.lineSeparator());
+                    }
+                } catch (Exception e) {
+                    log.warn("读取命令输出失败: {}", e.getMessage());
+                }
+            });
             // 等待进程完成，设置超时
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 log.error("命令执行超时（{}秒），强制终止进程", timeoutSeconds);
                 process.destroyForcibly();
+                outputReader.join(1000);
+                log.error("命令超时前输出: {}", abbreviateOutput(output.toString()));
                 return false;
             }
+            outputReader.join(1000);
             int exitCode = process.exitValue();
             if (exitCode == 0) {
                 log.info("命令执行成功: {}", command);
                 return true;
             } else {
                 log.error("命令执行失败，退出码: {}", exitCode);
+                log.error("命令输出: {}", abbreviateOutput(output.toString()));
                 return false;
             }
         } catch (Exception e) {
             log.error("执行命令失败: {}, 错误信息: {}", command, e.getMessage());
             return false;
         }
+    }
+
+    private String abbreviateOutput(String output) {
+        if (output == null || output.isBlank()) {
+            return "无输出";
+        }
+        int maxLength = 6000;
+        return output.length() <= maxLength ? output : output.substring(output.length() - maxLength);
     }
 
 }
