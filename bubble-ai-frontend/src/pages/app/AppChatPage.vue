@@ -26,7 +26,7 @@
       </div>
       <a-space>
         <a-tooltip title="打开生成页面"><a-button class="header-icon-button" :disabled="!previewReady" @click="openPreview"><CodeOutlined /></a-button></a-tooltip>
-        <a-tooltip title="下载 / 打开代码资源"><a-button class="header-icon-button" :disabled="!previewReady" @click="downloadCode"><DownloadOutlined /></a-button></a-tooltip>
+        <a-tooltip title="下载代码"><a-button class="header-icon-button" :loading="downloading" :disabled="!previewReady || downloading" @click="downloadCode"><DownloadOutlined /></a-button></a-tooltip>
         <a-button type="primary" :loading="deploying" :disabled="!previewReady" @click="deploy"><RocketOutlined /> 部署</a-button>
       </a-space>
     </header>
@@ -154,7 +154,7 @@ import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
 import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
-import { deployApp, getAppVoById, rebuildApp } from '@/api/appController'
+import { deployApp, downloadAppCode, getAppVoById, rebuildApp } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
@@ -178,7 +178,7 @@ const app = ref<API.AppVO>({})
 const appLoaded = ref(false)
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
-const generating = ref(false), deploying = ref(false), previewReady = ref(false)
+const generating = ref(false), deploying = ref(false), downloading = ref(false), previewReady = ref(false)
 const historyLoading = ref(false), historyLoadingMore = ref(false), historyInitialized = ref(false), hasMoreHistory = ref(false)
 const previewFullscreen = ref(false)
 const followingOutput = ref(true)
@@ -719,9 +719,97 @@ const retryPreviewCheck = async () => {
   }
   void resolvePreviewReady(REBUILD_PREVIEW_READY_RETRY_COUNT)
 }
+const safeDecodeURIComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+const getResponseHeader = (headers: unknown, headerName: string) => {
+  if (!headers || typeof headers !== 'object') return ''
+  const headerGetter = (headers as { get?: (name: string) => unknown }).get
+  if (typeof headerGetter === 'function') {
+    const value = headerGetter.call(headers, headerName)
+    if (typeof value === 'string') return value
+  }
+  const headerMap = headers as Record<string, unknown>
+  const value = headerMap[headerName] ?? headerMap[headerName.toLowerCase()]
+  if (typeof value === 'string') return value
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  return ''
+}
+const getDownloadFileName = (contentDisposition: string) => {
+  const encodedFileName = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  if (encodedFileName) return safeDecodeURIComponent(encodedFileName)
+  const quotedFileName = contentDisposition.match(/filename="?([^";]+)"?/i)?.[1]
+  return quotedFileName ? safeDecodeURIComponent(quotedFileName) : ''
+}
+const getFallbackDownloadFileName = () => {
+  const rawName = app.value.appName?.trim() || `bubble-ai-app-${id}`
+  const safeName = rawName.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_') || `bubble-ai-app-${id}`
+  return safeName.toLowerCase().endsWith('.zip') ? safeName : `${safeName}.zip`
+}
+const readBlobMessage = async (blob: Blob) => {
+  const text = await blob.text()
+  if (!text) return ''
+  try {
+    const parsed = JSON.parse(text) as { message?: unknown }
+    return typeof parsed.message === 'string' ? parsed.message : text
+  } catch {
+    return text
+  }
+}
+const resolveDownloadErrorMessage = async (error: unknown) => {
+  const responseData = (error as { response?: { data?: unknown } }).response?.data
+  if (responseData instanceof Blob) {
+    const blobMessage = await readBlobMessage(responseData)
+    if (blobMessage) return blobMessage
+  }
+  if (typeof responseData === 'string') return responseData
+  if (responseData && typeof responseData === 'object' && 'message' in responseData) {
+    const messageValue = (responseData as { message?: unknown }).message
+    if (typeof messageValue === 'string') return messageValue
+  }
+  return error instanceof Error && error.message ? error.message : '请稍后再试'
+}
+const triggerBlobDownload = (blob: Blob, fileName: string) => {
+  const blobUrl = window.URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = blobUrl
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100)
+}
 const togglePreviewFullscreen = () => { if (previewReady.value) previewFullscreen.value = !previewFullscreen.value }
 const openPreview = () => window.open(previewUrl.value, '_blank')
-const downloadCode = () => { window.open(previewUrl.value, '_blank'); message.info('已打开生成资源，可在新页面中查看或保存代码') }
+const downloadCode = async () => {
+  if (downloading.value) return
+  downloading.value = true
+  try {
+    const res = await downloadAppCode({ appId: id }, { timeout: 0 })
+    const blob = res.data
+    const contentType = getResponseHeader(res.headers, 'content-type') || blob.type
+    if (contentType.includes('application/json')) {
+      const errorMessage = await readBlobMessage(blob)
+      message.error('下载失败：' + (errorMessage || '请稍后再试'))
+      return
+    }
+    if (!blob.size) {
+      message.error('下载失败：文件内容为空')
+      return
+    }
+    const fileName = getDownloadFileName(getResponseHeader(res.headers, 'content-disposition')) || getFallbackDownloadFileName()
+    triggerBlobDownload(blob, fileName)
+    message.success('代码压缩包已开始下载')
+  } catch (error) {
+    message.error('下载失败：' + await resolveDownloadErrorMessage(error))
+  } finally {
+    downloading.value = false
+  }
+}
 const deploy = async () => {
   deploying.value = true
   try {
