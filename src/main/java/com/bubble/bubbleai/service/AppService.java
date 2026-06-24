@@ -1,5 +1,6 @@
 package com.bubble.bubbleai.service;
 
+import com.bubble.bubbleai.model.dto.app.AppAddRequest;
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.vo.AppVO;
@@ -72,11 +73,13 @@ public interface AppService extends IService<App> {
      */
     Boolean rebuildApp(Long appId, User loginUser);
 
+
     /**
-     * generate app cover
-     * @param appId;
-     * @param codeGenType;
+     * 创建应用
+     * @param appAddRequest;
+     * @param loginUser;
+     * @return ;
      */
-    void generateAppCover(Long appId, String codeGenType);
+    Long creatApp(AppAddRequest appAddRequest,User loginUser);
 
 }

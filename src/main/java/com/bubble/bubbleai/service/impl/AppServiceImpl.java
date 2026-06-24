@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.bubble.bubbleai.ai.AiCodeGenTypeRoutingService;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
@@ -13,6 +14,7 @@ import com.bubble.bubbleai.core.handler.StreamHandlerExecute;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.exception.ThrowUtils;
+import com.bubble.bubbleai.model.dto.app.AppAddRequest;
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
 import com.bubble.bubbleai.model.entity.App;
 import com.bubble.bubbleai.model.entity.User;
@@ -29,7 +31,6 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -50,7 +51,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private UserService userService;
-    @Autowired
+    @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
     @Resource
     private StreamHandlerExecute streamHandlerExecute;
@@ -60,6 +61,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AppCoverGenerator appCoverGenerator;
     @Resource
     private ReactProjectBuilder reactProjectBuilder;
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -154,12 +157,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR,"无权限访问该应用");
         }
         //4.获取应用的代码生成类型
-        app.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
-        App updateCodeGenTypeApp = new App();
-        updateCodeGenTypeApp.setId(appId);
-        updateCodeGenTypeApp.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
-        boolean updateCodeGenTypeResult = this.updateById(updateCodeGenTypeApp);
-        ThrowUtils.throwIf(!updateCodeGenTypeResult,ErrorCode.OPERATION_ERROR,"更新应用生成类型失败");
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         if (codeGenTypeEnum == null) {
@@ -289,8 +286,24 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
-    public void generateAppCover(Long appId, String codeGenType) {
-        appCoverGenerator.generate(appId, codeGenType);
+    public Long creatApp(AppAddRequest appAddRequest, User loginUser) {
+        //参数校验
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt),ErrorCode.PARAMS_ERROR,"");
+        //构造入库对象
+        App app = new App();
+        BeanUtils.copyProperties(appAddRequest,app);
+        app.setUserId(loginUser.getId());
+        //应用名称暂时为initPrompt前12位
+        app.setAppName(initPrompt.substring(0,Math.min(initPrompt.length(),12)));
+        //使用AI智能选择代码生成类型
+        CodeGenTypeEnum selectedCodegenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(selectedCodegenType.getValue());
+        //插入数据库
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result,ErrorCode.OPERATION_ERROR);
+        log.info("应用创建成功，ID: {},类型: {}",app.getId(),selectedCodegenType.getValue());
+        return app.getId();
     }
 
     /**

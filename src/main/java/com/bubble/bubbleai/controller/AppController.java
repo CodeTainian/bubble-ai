@@ -1,7 +1,6 @@
 package com.bubble.bubbleai.controller;
 
 import cn.hutool.json.JSONUtil;
-import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.annotation.AuthCheck;
 import com.bubble.bubbleai.common.BaseResponse;
 import com.bubble.bubbleai.common.DeleteRequest;
@@ -64,19 +63,9 @@ public class AppController {
     @PostMapping("/add")
     public BaseResponse<Long> addApp(@RequestBody AppAddRequest appAddRequest, HttpServletRequest request) {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
-        String initPrompt = appAddRequest.getInitPrompt();
-        ThrowUtils.throwIf(StringUtils.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始 Prompt 不能为空");
-
         User loginUser = userService.getLoginUser(request);
-        App app = new App();
-        BeanUtils.copyProperties(appAddRequest,app);
-        app.setUserId(loginUser.getId());
-        app.setAppName(initPrompt.substring(0,Math.min(initPrompt.length(),12)));//前12位作为应用名称
-        //Todo 是否需要处理默认优先级  app.setPriority(0); // 默认优先级为0
-        app.setCodeGenType(CodeGenTypeEnum.REACT_PROJECT.getValue());
-        boolean result = appService.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
-        return ResultUtils.success(app.getId());
+        Long appId = appService.creatApp(appAddRequest,loginUser);
+        return ResultUtils.success(appId);
     }
 
     /**
