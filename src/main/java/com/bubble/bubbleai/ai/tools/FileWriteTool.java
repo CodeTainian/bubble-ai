@@ -1,4 +1,4 @@
-package com.bubble.bubbleai.ai.model.tools;
+package com.bubble.bubbleai.ai.tools;
 
 
 import com.bubble.bubbleai.constant.AppConstant;

@@ -3,7 +3,7 @@ package com.bubble.bubbleai.ai;
 
 
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
-import com.bubble.bubbleai.ai.model.tools.FileWriteTool;
+import com.bubble.bubbleai.ai.tools.FileWriteTool;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.service.ChatHistoryService;
