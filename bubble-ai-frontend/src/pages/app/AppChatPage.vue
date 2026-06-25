@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-page" :class="{ 'preview-fullscreen': previewFullscreen }">
+  <div class="chat-page" :class="{ 'preview-fullscreen': previewFullscreen, 'visual-editing': visualEditMode }">
     <header class="studio-header">
       <RouterLink to="/" class="app-title">
         <img src="@/assets/logo.svg" alt="Bubble AI" />
@@ -79,12 +79,36 @@
         <button v-if="!followingOutput" class="scroll-to-latest" type="button" @click="resumeFollowingOutput">查看最新内容</button>
         <div class="composer-wrap">
           <div class="composer">
+            <a-alert
+              v-if="selectedVisualElement"
+              class="selected-element-alert"
+              type="info"
+              show-icon
+              closable
+              @close="clearSelectedVisualElement"
+            >
+              <template #message>{{ selectedVisualElementTitle }}</template>
+              <template #description>{{ selectedVisualElementDescription }}</template>
+            </a-alert>
             <div class="composer-input" :class="{ disabled: !canChat }" :title="chatPermissionTip || undefined">
               <a-textarea v-model:value="input" :bordered="false" :disabled="!canChat" :auto-size="{ minRows: 3, maxRows: 5 }" placeholder="描述得越详细，页面越具体。可以继续提出修改意见..." @pressEnter="handleEnter" />
             </div>
             <div class="composer-footer">
               <span><MessageOutlined /> 继续对话完善页面</span>
-              <a-button class="composer-send-button" type="primary" shape="circle" :loading="generating" :disabled="!canChat || !input.trim()" @click="sendMessage"><ArrowUpOutlined /></a-button>
+              <div class="composer-actions">
+                <a-tooltip :title="visualEditorTip">
+                  <a-button
+                    class="composer-edit-button"
+                    :class="{ active: visualEditMode }"
+                    shape="circle"
+                    :disabled="!visualEditMode && !canUseVisualEditor"
+                    @click="toggleVisualEditMode"
+                  >
+                    <EditOutlined />
+                  </a-button>
+                </a-tooltip>
+                <a-button class="composer-send-button" type="primary" shape="circle" :loading="generating" :disabled="!canChat || !input.trim()" @click="sendMessage"><ArrowUpOutlined /></a-button>
+              </div>
             </div>
           </div>
         </div>
@@ -101,7 +125,7 @@
 
       <section class="preview-pane">
         <div class="preview-stage">
-          <iframe v-if="previewReady" :key="previewKey" :src="previewUrl" title="生成应用预览"></iframe>
+          <iframe v-if="previewReady" ref="previewFrame" :key="previewKey" :src="previewUrl" title="生成应用预览" @load="handlePreviewFrameLoad"></iframe>
           <div v-else class="empty-preview">
             <div v-if="previewLoading" class="preview-loader" aria-hidden="true">
               <div class="loader-toolbar"><span></span><span></span><span></span></div>
@@ -151,10 +175,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
-import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined, UpOutlined } from '@ant-design/icons-vue'
+import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, EditOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined, UpOutlined } from '@ant-design/icons-vue'
 import hljs from 'highlight.js/lib/core'
 import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
@@ -165,6 +189,13 @@ import { listAppChatHistory } from '@/api/chatHistoryController'
 import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_API_BASE_URL, APP_PREVIEW_BASE_URL } from '@/config/env'
+import {
+  buildVisualEditorPrompt,
+  createVisualEditorBridge,
+  getVisualEditorElementDescription,
+  getVisualEditorElementTitle,
+  type VisualEditorElementInfo,
+} from '@/utils/visualEditor'
 
 type ChatMessage = { id?: string; role: 'user' | 'assistant'; content: string; pending?: boolean; createTime?: string }
 type MessageBlock =
@@ -192,8 +223,11 @@ const previewKey = ref(0)
 const versionCoverRefreshKey = ref(0)
 const messageList = ref<HTMLElement>()
 const workspace = ref<HTMLElement>()
+const previewFrame = ref<HTMLIFrameElement>()
 const conversationWidth = ref(520), versionWidth = ref(132)
 const resizingPane = ref<ResizePane>()
+const visualEditMode = ref(false)
+const selectedVisualElement = ref<VisualEditorElementInfo>()
 let eventSource: EventSource | undefined
 let activeAssistantIndex: number | undefined
 let typewriterTimer: number | undefined
@@ -227,6 +261,20 @@ const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px min
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
 const loginUserInitial = computed(() => (loginUserStore.loginUser.userName || loginUserStore.loginUser.userAccount || '我').slice(0, 1))
+const canUseVisualEditor = computed(() => Boolean(canChat.value && previewReady.value && !generating.value))
+const visualEditorTip = computed(() => {
+  if (visualEditMode.value) return '退出可视化编辑'
+  if (!canChat.value) return chatPermissionTip.value || '当前应用不可编辑'
+  if (!previewReady.value) return '预览生成后可以点选页面元素'
+  if (generating.value) return '生成过程中暂不可点选元素'
+  return '点选预览中的元素'
+})
+const selectedVisualElementTitle = computed(() =>
+  selectedVisualElement.value ? `已选中元素：${getVisualEditorElementTitle(selectedVisualElement.value)}` : ''
+)
+const selectedVisualElementDescription = computed(() =>
+  selectedVisualElement.value ? getVisualEditorElementDescription(selectedVisualElement.value) : ''
+)
 
 type ResizePane = 'conversation' | 'versions'
 const MIN_CONVERSATION_WIDTH = 360
@@ -252,6 +300,54 @@ let resizeStartWidth = 0
 let historyCursor: string | undefined
 let loadedHistoryTotal = 0
 const loadedHistoryKeys = new Set<string>()
+let visualEditorAccessWarned = false
+
+const visualEditorBridge = createVisualEditorBridge({
+  getIframe: () => previewFrame.value,
+  onSelect: (element) => {
+    selectedVisualElement.value = element
+  },
+  onError: () => {
+    if (!visualEditMode.value || visualEditorAccessWarned) return
+    visualEditorAccessWarned = true
+    message.warning('无法注入可视化编辑脚本，请确认预览页面与主站同源')
+  },
+})
+
+const clearSelectedVisualElement = () => {
+  selectedVisualElement.value = undefined
+  visualEditorBridge.clearSelection()
+}
+
+const exitVisualEditMode = () => {
+  visualEditMode.value = false
+  visualEditorBridge.disable()
+}
+
+const resetVisualEditorState = () => {
+  selectedVisualElement.value = undefined
+  if (visualEditMode.value) exitVisualEditMode()
+  else visualEditorBridge.clearSelection()
+}
+
+const enterVisualEditMode = () => {
+  if (!canUseVisualEditor.value) {
+    message.warning(visualEditorTip.value)
+    return
+  }
+  visualEditorAccessWarned = false
+  visualEditMode.value = true
+  visualEditorBridge.enable()
+}
+
+const toggleVisualEditMode = () => {
+  if (visualEditMode.value) exitVisualEditMode()
+  else enterVisualEditMode()
+}
+
+const handlePreviewFrameLoad = () => {
+  if (visualEditMode.value) visualEditorBridge.refresh()
+}
 
 const normalizeCodeGenType = (codeGenType?: string) => (codeGenType || '').trim()
 const isReactProjectType = (codeGenType?: string) => normalizeCodeGenType(codeGenType) === REACT_PROJECT_CODE_GEN_TYPE
@@ -559,12 +655,13 @@ const syncGeneratedAppInfo = async () => {
 const send = (content: string) => {
   if (!content.trim() || generating.value || !canChat.value) return
   const userMessage = content.trim()
-  const aiMessage = `${userMessage}`
+  const aiMessage = buildVisualEditorPrompt(userMessage, selectedVisualElement.value)
   eventSource?.close()
   resetTypewriter()
   messages.value.push({ role: 'user', content: userMessage })
   activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true }) - 1
   input.value = ''
+  resetVisualEditorState()
   generating.value = true
   generatedCodeGenType.value = REACT_PROJECT_CODE_GEN_TYPE
   historyIndicatesReactProject.value = true
@@ -701,7 +798,10 @@ const completeGeneration = () => {
 }
 const sendMessage = () => send(input.value)
 const handleEnter = (event: KeyboardEvent) => { if (!event.shiftKey) { event.preventDefault(); sendMessage() } }
-const refreshPreview = () => previewKey.value++
+const refreshPreview = () => {
+  clearSelectedVisualElement()
+  previewKey.value++
+}
 const retryPreviewCheck = async () => {
   if (previewRebuilding.value || previewChecking.value) return
   previewRebuilding.value = true
@@ -832,9 +932,14 @@ const deploy = async () => {
     else message.error('部署失败：' + res.data.message)
   } finally { deploying.value = false }
 }
+watch(canUseVisualEditor, (canUse) => {
+  if (!canUse) resetVisualEditorState()
+})
+
 onMounted(loadApp)
 onBeforeUnmount(() => {
   previewFullscreen.value = false
+  visualEditorBridge.destroy()
   coverSyncId++
   previewCheckId++
   previewRebuilding.value = false
@@ -1200,6 +1305,22 @@ onBeforeUnmount(() => {
   background: #f6f7f8;
   box-shadow: 0 14px 34px rgba(15, 23, 42, .08);
 }
+.selected-element-alert {
+  margin-bottom: 10px;
+  border-color: rgba(36, 170, 161, .26);
+  border-radius: 14px;
+  background: #f1fbfa;
+}
+.selected-element-alert :deep(.ant-alert-message) {
+  color: #142126;
+  font-size: 12px;
+  font-weight: 700;
+}
+.selected-element-alert :deep(.ant-alert-description) {
+  color: #5f7174;
+  font-size: 12px;
+  line-height: 1.55;
+}
 .composer textarea {
   resize: none;
 }
@@ -1215,6 +1336,26 @@ onBeforeUnmount(() => {
 .composer-footer span {
   color: #8b9699;
   font-size: 12px;
+}
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.composer-edit-button {
+  border-color: rgba(17, 24, 39, .1);
+  color: #172326;
+  background: #fff;
+}
+.composer-edit-button:hover,
+.composer-edit-button:focus {
+  border-color: #24aaa1;
+  color: #168f88;
+}
+.composer-edit-button.active {
+  border-color: #24aaa1;
+  color: #fff;
+  background: #24aaa1;
 }
 .composer-send-button {
   background: #aeb5bb;
@@ -1238,6 +1379,10 @@ onBeforeUnmount(() => {
   border-radius: 20px;
   background: #eef2f6;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.72), 0 16px 36px rgba(15, 23, 42, .05);
+}
+.visual-editing .preview-stage {
+  border-color: rgba(36, 170, 161, .78);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.72), 0 16px 36px rgba(36, 170, 161, .14);
 }
 .preview-stage iframe {
   display: block;
