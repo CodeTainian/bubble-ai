@@ -3,7 +3,7 @@ package com.bubble.bubbleai.ai;
 
 
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
-import com.bubble.bubbleai.ai.tools.FileWriteTool;
+import com.bubble.bubbleai.ai.tools.*;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.service.ChatHistoryService;
@@ -35,6 +35,8 @@ public class AiCodeGeneratorServiceFactory {
     private RedisChatMemoryStore redisChatMemoryStore;
     @Resource
     private ChatHistoryService chatHistoryService;
+    @Resource
+    private ToolManager toolManager;
 
     /**
      * Ai服务实例缓存
@@ -78,7 +80,7 @@ public class AiCodeGeneratorServiceFactory {
                     .chatModel(chatModel)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool())
+                    .tools((Object[]) toolManager.getAllTools())
                     .hallucinatedToolNameStrategy(toolExecutionRequest ->
                             ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
                                     toolExecutionRequest.name()))
