@@ -201,6 +201,12 @@ type ChatMessage = { id?: string; role: 'user' | 'assistant'; content: string; p
 type MessageBlock =
   | { type: 'text'; content: string }
   | { type: 'code'; content: string; language: string; closed: boolean }
+type PreviewSnapshot = {
+  ready: boolean
+  entryUrl: string
+  codeGenType?: string
+  historyIndicatesReactProject: boolean
+}
 
 hljs.registerLanguage('html', xml)
 hljs.registerLanguage('xml', xml)
@@ -233,6 +239,8 @@ let activeAssistantIndex: number | undefined
 let typewriterTimer: number | undefined
 let typewriterQueue = ''
 let streamEnded = false
+let streamInterruptedByBusinessError = false
+let previewSnapshotBeforeGeneration: PreviewSnapshot | undefined
 let coverSyncId = 0
 let previewCheckId = 0
 const generatedCodeGenType = ref<string>()
@@ -355,6 +363,8 @@ const getPreferredPreviewCodeGenType = () =>
   normalizeCodeGenType(generatedCodeGenType.value)
   || normalizeCodeGenType(app.value.codeGenType)
   || DEFAULT_CODE_GEN_TYPE
+const getActiveGenerationCodeGenType = () =>
+  normalizeCodeGenType(app.value.codeGenType) || REACT_PROJECT_CODE_GEN_TYPE
 const buildPreviewUrl = (codeGenType: string) => {
   const normalizedType = normalizeCodeGenType(codeGenType) || DEFAULT_CODE_GEN_TYPE
   const dirName = `${normalizedType}_${id}`
@@ -670,8 +680,15 @@ const send = (content: string) => {
   input.value = ''
   resetVisualEditorState()
   generating.value = true
-  generatedCodeGenType.value = REACT_PROJECT_CODE_GEN_TYPE
-  historyIndicatesReactProject.value = true
+  const activeCodeGenType = getActiveGenerationCodeGenType()
+  previewSnapshotBeforeGeneration = {
+    ready: previewReady.value,
+    entryUrl: previewEntryUrl.value,
+    codeGenType: generatedCodeGenType.value,
+    historyIndicatesReactProject: historyIndicatesReactProject.value,
+  }
+  generatedCodeGenType.value = activeCodeGenType
+  historyIndicatesReactProject.value = isReactProjectType(activeCodeGenType)
   previewCheckId++
   previewReady.value = false
   previewEntryUrl.value = ''
@@ -681,15 +698,22 @@ const send = (content: string) => {
   const source = new EventSource(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
   eventSource = source
   source.onmessage = (event) => {
-    const assistant = getActiveAssistant()
     const chunk = normalizeChunk(event.data)
-    if (!assistant || !chunk) return
-    assistant.pending = false
-    typewriterQueue += chunk
-    if (typewriterTimer === undefined) flushTypewriterQueue()
+    appendAssistantChunk(chunk)
   }
+  source.addEventListener('business-error', (event) => {
+    streamInterruptedByBusinessError = true
+    appendAssistantChunk(normalizeBusinessErrorChunk((event as MessageEvent).data))
+  })
   source.addEventListener('done', () => finishGeneration(source))
-  source.onerror = () => finishGeneration(source)
+  source.onerror = () => {
+    streamInterruptedByBusinessError = true
+    const assistant = getActiveAssistant()
+    if (assistant && !assistant.content && !typewriterQueue) {
+      appendAssistantChunk('连接中断，请稍后再试')
+    }
+    finishGeneration(source)
+  }
   resumeFollowingOutput()
 }
 const normalizeChunk = (chunk: string) => {
@@ -697,6 +721,19 @@ const normalizeChunk = (chunk: string) => {
     const parsed: unknown = JSON.parse(chunk)
     if (typeof parsed === 'string') return parsed
     if (typeof parsed === 'object' && parsed !== null && 'd' in parsed && typeof parsed.d === 'string') return parsed.d
+    return chunk
+  } catch {
+    return chunk
+  }
+}
+const normalizeBusinessErrorChunk = (chunk: string) => {
+  try {
+    const parsed: unknown = JSON.parse(chunk)
+    if (typeof parsed === 'object' && parsed !== null) {
+      if ('message' in parsed && typeof parsed.message === 'string') return parsed.message
+      if ('d' in parsed && typeof parsed.d === 'string') return parsed.d
+    }
+    if (typeof parsed === 'string') return parsed
     return chunk
   } catch {
     return chunk
@@ -744,6 +781,13 @@ const getActiveAssistant = () => {
   const assistant = messages.value[activeAssistantIndex]
   return assistant?.role === 'assistant' ? assistant : undefined
 }
+const appendAssistantChunk = (chunk: string) => {
+  const assistant = getActiveAssistant()
+  if (!assistant || !chunk) return
+  assistant.pending = false
+  typewriterQueue += chunk
+  if (typewriterTimer === undefined) flushTypewriterQueue()
+}
 const clearTypewriterTimer = () => {
   if (typewriterTimer === undefined) return
   window.clearTimeout(typewriterTimer)
@@ -754,6 +798,8 @@ const resetTypewriter = () => {
   activeAssistantIndex = undefined
   typewriterQueue = ''
   streamEnded = false
+  streamInterruptedByBusinessError = false
+  previewSnapshotBeforeGeneration = undefined
 }
 const getTypewriterBatchSize = () => {
   if (typewriterQueue.length > 2400) return 32
@@ -791,10 +837,33 @@ const completeGeneration = () => {
   if (assistant) {
     assistant.pending = false
   }
+  const interruptedByBusinessError = streamInterruptedByBusinessError
   activeAssistantIndex = undefined
   typewriterQueue = ''
   streamEnded = false
-  generatedCodeGenType.value = REACT_PROJECT_CODE_GEN_TYPE
+  streamInterruptedByBusinessError = false
+  if (interruptedByBusinessError) {
+    previewCheckId++
+    if (previewSnapshotBeforeGeneration) {
+      previewReady.value = previewSnapshotBeforeGeneration.ready
+      previewEntryUrl.value = previewSnapshotBeforeGeneration.entryUrl
+      generatedCodeGenType.value = previewSnapshotBeforeGeneration.codeGenType
+      historyIndicatesReactProject.value = previewSnapshotBeforeGeneration.historyIndicatesReactProject
+    } else {
+      previewReady.value = false
+      previewEntryUrl.value = ''
+    }
+    previewChecking.value = false
+    previewCheckFailed.value = false
+    previewRebuilding.value = false
+    previewSnapshotBeforeGeneration = undefined
+    scrollToBottom()
+    return
+  }
+  const activeCodeGenType = getActiveGenerationCodeGenType()
+  generatedCodeGenType.value = activeCodeGenType
+  historyIndicatesReactProject.value = isReactProjectType(activeCodeGenType)
+  previewSnapshotBeforeGeneration = undefined
   previewReady.value = false
   previewEntryUrl.value = ''
   previewCheckFailed.value = false
