@@ -47,7 +47,7 @@
             <span v-else class="muted">暂无封面</span>
           </template>
           <template v-else-if="column.dataIndex === 'codeGenType'">
-            <a-tag class="type-tag">{{ record.codeGenType || '-' }}</a-tag>
+            <a-tag class="type-tag">{{ getCodeGenTypeDisplay(record.codeGenType, '-') }}</a-tag>
           </template>
           <template v-else-if="column.dataIndex === 'userId'">
             <span class="muted mono">{{ record.userId || '-' }}</span>
@@ -76,7 +76,7 @@ import { message } from 'ant-design-vue'
 import { FilterOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import AppCover from '@/components/AppCover.vue'
 import { deleteAppByAdmin, listAppVoByPageByAdmin, updateAppByAdmin } from '@/api/appController'
-import { confirmDeleteApp } from '@/utils/app'
+import { confirmDeleteApp, getCodeGenTypeDisplay } from '@/utils/app'
 import { formatDate } from '@/utils/date'
 
 const router = useRouter()

@@ -2,16 +2,16 @@
   <a-layout-header class="header">
     <a-row :wrap="false">
       <!-- 左侧：Logo和标题 -->
-      <a-col flex="200px">
+      <a-col class="brand-col" flex="200px">
         <RouterLink to="/">
           <div class="header-left">
             <img class="logo" src="@/assets/logo.svg" alt="Logo" />
-            <h1 class="site-title">Bubble IA</h1>
+            <h1 class="site-title">Bubble AI</h1>
           </div>
         </RouterLink>
       </a-col>
       <!-- 中间：导航菜单 -->
-      <a-col flex="auto">
+      <a-col class="nav-col" flex="auto">
         <a-menu
           v-model:selectedKeys="selectedKeys"
           mode="horizontal"
@@ -20,7 +20,7 @@
         />
       </a-col>
       <!-- 右侧：用户操作区域 -->
-      <a-col>
+      <a-col class="account-col">
         <div class="user-login-status">
           <div v-if="loginUserStore.loginUser.id">
             <a-dropdown>
@@ -210,5 +210,17 @@ const originalItems = [
   border-radius: 9px;
   font-weight: 700;
   box-shadow: 0 10px 22px rgba(24, 144, 255, .2);
+}
+
+@media (max-width: 640px) {
+  .header { padding: 0 14px; }
+  .brand-col { flex: 0 0 52px !important; max-width: 52px; }
+  .site-title { display: none; }
+  .header-left { gap: 0; }
+  .nav-col { min-width: 0; }
+  .header :deep(.ant-menu-horizontal > .ant-menu-item) { padding-inline: 10px; }
+  .account-col { flex: 0 0 auto; }
+  .user-login-status :deep(.ant-space) { gap: 0 !important; }
+  .user-login-status :deep(.ant-space-item:last-child) { display: none; }
 }
 </style>

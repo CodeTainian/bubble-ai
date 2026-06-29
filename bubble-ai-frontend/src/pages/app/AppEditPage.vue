@@ -4,6 +4,7 @@
     <a-spin :spinning="loading">
       <a-form :model="form" layout="vertical" @finish="submit">
         <a-form-item label="应用名称" name="appName" :rules="[{ required: true, message: '请输入应用名称' }]"><a-input v-model:value="form.appName" placeholder="输入应用名称" /></a-form-item>
+        <a-form-item label="代码生成类型"><div class="code-type-readonly"><a-tag class="code-type-tag">{{ codeGenTypeDisplay }}</a-tag><span>{{ codeGenTypeDescription }}</span></div></a-form-item>
         <template v-if="isAdmin">
           <a-form-item label="应用封面"><a-input v-model:value="form.cover" placeholder="输入封面图片 URL" /></a-form-item>
           <a-form-item label="优先级"><a-input-number v-model:value="form.priority" :min="0" style="width: 100%" /><div class="hint">填写 99 可将应用设置为精选。</div></a-form-item>
@@ -19,24 +20,32 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { getAppVoById, getAppVoByIdByAdmin, updateApp, updateAppByAdmin } from '@/api/appController'
+import { getCodeGenTypeDescription, getCodeGenTypeDisplay } from '@/utils/app'
 
 const route = useRoute(), router = useRouter()
 const isAdmin = computed(() => route.path.startsWith('/admin'))
 const id = String(route.params.id)
 const loading = ref(true), saving = ref(false)
 const form = reactive<API.AppAdminUpdateRequest>({ id, appName: '', cover: '', priority: 0 })
+const codeGenType = ref('')
+const codeGenTypeDisplay = computed(() => getCodeGenTypeDisplay(codeGenType.value))
+const codeGenTypeDescription = computed(() => getCodeGenTypeDescription(codeGenType.value))
 const load = async () => {
   loading.value = true
   try {
     const res = isAdmin.value ? await getAppVoByIdByAdmin({ id }) : await getAppVoById({ id })
     if (!res.data.data) return message.error('获取应用信息失败：' + res.data.message)
-    Object.assign(form, res.data.data)
+    const app = res.data.data
+    form.appName = app.appName || ''
+    form.cover = app.cover || ''
+    form.priority = app.priority ?? 0
+    codeGenType.value = app.codeGenType || ''
   } finally { loading.value = false }
 }
 const submit = async () => {
   saving.value = true
   try {
-    const res = isAdmin.value ? await updateAppByAdmin(form) : await updateApp({ id, appName: form.appName })
+    const res = isAdmin.value ? await updateAppByAdmin({ id, appName: form.appName, cover: form.cover, priority: form.priority }) : await updateApp({ id, appName: form.appName })
     if (res.data.code === 0) { message.success('保存成功'); router.back() } else message.error('保存失败：' + res.data.message)
   } finally { saving.value = false }
 }
@@ -44,5 +53,5 @@ onMounted(load)
 </script>
 
 <style scoped>
-.edit-page { max-width: 620px; margin: 20px auto; padding: 28px; border: 1px solid #edf1f1; border-radius: 18px; box-shadow: 0 14px 35px rgba(29,99,103,.08); }.page-title span { color: #16aaa1; font-size: 11px; font-weight: 700; letter-spacing: 2px; }.page-title h2 { margin: 8px 0; font-size: 27px; }.page-title p, .hint { color: #90a0a2; }.page-title p { margin-bottom: 25px; }.hint { margin-top: 7px; font-size: 12px; }
+.edit-page { max-width: 620px; margin: 20px auto; padding: 28px; border: 1px solid #edf1f1; border-radius: 18px; box-shadow: 0 14px 35px rgba(29,99,103,.08); }.page-title span { color: #16aaa1; font-size: 11px; font-weight: 700; letter-spacing: 2px; }.page-title h2 { margin: 8px 0; font-size: 27px; }.page-title p, .hint { color: #90a0a2; }.page-title p { margin-bottom: 25px; }.hint { margin-top: 7px; font-size: 12px; }.code-type-readonly { display: flex; min-height: 38px; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid #edf1f1; border-radius: 8px; background: #fbfdfd; color: #7c8b90; }.code-type-tag { border: 0; border-radius: 999px; color: #2367a2; background: #edf6ff; font-weight: 800; }
 </style>

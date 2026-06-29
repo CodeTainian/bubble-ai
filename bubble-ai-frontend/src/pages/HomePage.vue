@@ -17,7 +17,7 @@
         <div class="prompt-actions">
           <div class="suggestion-title"><BulbOutlined /> 从一个灵感开始</div>
           <a-button type="primary" shape="circle" size="large" :loading="creating" @click="createApp">
-            <ArrowUpOutlined />
+            <ArrowUpOutlined v-if="!creating" />
           </a-button>
         </div>
       </div>
@@ -174,4 +174,5 @@ h1 img { width: clamp(46px, 4.2vw, 58px); height: clamp(46px, 4.2vw, 58px); bord
 .suggestion-card { min-height: 0; padding: 9px 18px; border: 1px solid rgba(255,255,255,.72); border-radius: 14px; color: #5d7178; background: rgba(255,255,255,.78); box-shadow: 0 10px 28px rgba(45, 123, 142, .08); cursor: pointer; font-size: 14px; font-weight: 700; transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease, background .2s ease; backdrop-filter: blur(8px); }
 .suggestion-card:hover { border-color: rgba(28, 175, 166, .52); color: #10212a; box-shadow: 0 16px 38px rgba(45, 123, 142, .14); transform: translateY(-2px); }
 @media (max-width: 800px) { .home-page { padding: 48px 14px 42px; } .hero { min-height: auto; padding: 48px 4px 36px; } h1 { flex-wrap: wrap; letter-spacing: 1px; } .hero-copy p { letter-spacing: 2px; } .prompt-panel { margin-top: 42px; } }
+@media (max-width: 520px) { .hero { padding-top: 42px; } .hero-copy .eyebrow { font-size: 10px; letter-spacing: 5px; } h1 { gap: 10px; font-size: 34px; } h1 img { width: 42px; height: 42px; border-radius: 12px; } .hero-copy p { font-size: 17px; line-height: 1.7; } .suggestions { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding-bottom: 4px; } .suggestion-card { flex: 0 0 auto; } }
 </style>

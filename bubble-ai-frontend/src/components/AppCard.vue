@@ -14,6 +14,7 @@
           <div class="app-info">
             <div class="title-row">
               <h3>{{ app.appName || '未命名应用' }}</h3>
+              <a-tag v-if="appCodeGenType" class="code-type-tag" :title="appCodeGenTypeDescription">{{ appCodeGenType }}</a-tag>
               <a-tag v-if="featured" color="cyan">精选</a-tag>
             </div>
             <span class="author-name">
@@ -47,6 +48,7 @@ import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_DEPLOY_BASE_URL } from '@/config/env'
 import { formatDate } from '@/utils/date'
+import { getCodeGenTypeDescription, getCodeGenTypeDisplay } from '@/utils/app'
 
 const props = defineProps<{ app: API.AppVO; editable?: boolean; featured?: boolean; ownerOnly?: boolean }>()
 defineEmits<{ edit: [app: API.AppVO]; delete: [app: API.AppVO] }>()
@@ -57,6 +59,8 @@ const isOwner = computed(() => Boolean(props.app.userId && loginUserStore.loginU
 const canOpenChat = computed(() => !props.ownerOnly || isOwner.value)
 const chatPermissionTip = computed(() => props.ownerOnly && !isOwner.value ? '无法在别人的作品下对话哦~' : '')
 const authorInitial = computed(() => (props.app.user?.userName || props.app.user?.userAccount || '我').slice(0, 1))
+const appCodeGenType = computed(() => props.app.codeGenType ? getCodeGenTypeDisplay(props.app.codeGenType) : '')
+const appCodeGenTypeDescription = computed(() => getCodeGenTypeDescription(props.app.codeGenType))
 const openApp = () => canOpenChat.value && props.app.id && router.push(`/app/chat/${props.app.id}`)
 const openDeployedApp = () => props.app.deployKey && window.open(`${APP_DEPLOY_BASE_URL}/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
 </script>
@@ -81,6 +85,8 @@ const openDeployedApp = () => props.app.deployKey && window.open(`${APP_DEPLOY_B
 .app-info { min-width: 0; flex: 1; }
 .title-row, .card-footer { display: flex; align-items: center; justify-content: flex-start; gap: 10px; }
 .title-row :deep(.ant-tag) { flex: 0 0 auto; margin-inline-end: 0; }
+.title-row h3 { min-width: 0; flex: 1; }
+.code-type-tag { border: 0; border-radius: 999px; color: #2367a2; background: #edf6ff; font-size: 12px; font-weight: 800; line-height: 20px; }
 h3 { overflow: hidden; margin: 0; color: #142226; font-size: 17px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .author-name { display: flex; overflow: hidden; margin-top: 3px; color: #6f7f82; font-size: 13px; gap: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .author-name span { color: #8a949c; }
