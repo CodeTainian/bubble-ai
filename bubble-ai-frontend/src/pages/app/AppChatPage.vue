@@ -698,6 +698,11 @@ const send = (content: string) => {
   const source = new EventSource(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
   eventSource = source
   source.onmessage = (event) => {
+    if (isBusinessErrorChunk(event.data)) {
+      streamInterruptedByBusinessError = true
+      appendAssistantChunk(normalizeBusinessErrorChunk(event.data))
+      return
+    }
     const chunk = normalizeChunk(event.data)
     appendAssistantChunk(chunk)
   }
@@ -707,10 +712,13 @@ const send = (content: string) => {
   })
   source.addEventListener('done', () => finishGeneration(source))
   source.onerror = () => {
-    streamInterruptedByBusinessError = true
-    const assistant = getActiveAssistant()
-    if (assistant && !assistant.content && !typewriterQueue) {
-      appendAssistantChunk('连接中断，请稍后再试')
+    const hasKnownStreamError = streamInterruptedByBusinessError
+    if (!hasKnownStreamError) {
+      streamInterruptedByBusinessError = true
+      const assistant = getActiveAssistant()
+      if (assistant && !assistant.content && !typewriterQueue) {
+        appendAssistantChunk('连接中断，请稍后再试')
+      }
     }
     finishGeneration(source)
   }
@@ -724,6 +732,16 @@ const normalizeChunk = (chunk: string) => {
     return chunk
   } catch {
     return chunk
+  }
+}
+const isBusinessErrorChunk = (chunk: string) => {
+  try {
+    const parsed: unknown = JSON.parse(chunk)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false
+    const payload = parsed as Record<string, unknown>
+    return payload.error === true || (typeof payload.message === 'string' && typeof payload.code === 'number' && !('d' in payload))
+  } catch {
+    return false
   }
 }
 const normalizeBusinessErrorChunk = (chunk: string) => {

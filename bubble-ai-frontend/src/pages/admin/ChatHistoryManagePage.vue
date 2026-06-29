@@ -29,7 +29,7 @@
         </div>
         <div class="filter-field">
           <label>消息类型：</label>
-          <a-input v-model:value="searchParams.messageType" allow-clear placeholder="如 user / ai" size="large" />
+          <a-input v-model:value="searchParams.messageType" allow-clear placeholder="如 user / ai / error" size="large" />
         </div>
         <div class="filter-field">
           <label>消息内容：</label>
@@ -112,12 +112,14 @@ const getMessageTypeText = (messageType?: string) => {
   const type = normalizeMessageType(messageType)
   if (type.includes('user') || type.includes('human') || type.includes('request') || type.includes('用户')) return '用户'
   if (type === 'ai' || type.includes('assistant') || type.includes('model') || type.includes('answer') || type.includes('response') || type.includes('助手')) return 'AI'
+  if (type === 'error' || type.includes('错误') || type.includes('失败')) return '错误'
   return messageType || '-'
 }
 const getMessageTypeClass = (messageType?: string) => {
   const text = getMessageTypeText(messageType)
   if (text === '用户') return 'user-message-tag'
   if (text === 'AI') return 'ai-message-tag'
+  if (text === '错误') return 'error-message-tag'
   return 'plain-tag'
 }
 const viewApp = (appId?: string) => appId && router.push(`/app/chat/${appId}`)
@@ -131,6 +133,7 @@ onMounted(fetchData)
 }
 .user-message-tag,
 .ai-message-tag,
+.error-message-tag,
 .plain-tag {
   border: 0;
   border-radius: 999px;
@@ -139,6 +142,7 @@ onMounted(fetchData)
 }
 .user-message-tag { color: #2f5f8f; background: #edf6ff; }
 .ai-message-tag { color: #07866f; background: #e7fbf5; }
+.error-message-tag { color: #b42318; background: #fff1f0; }
 .plain-tag { color: #697586; background: #f1f4f8; }
 .message-preview {
   max-width: 520px;
