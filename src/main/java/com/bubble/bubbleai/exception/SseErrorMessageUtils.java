@@ -17,21 +17,24 @@ public final class SseErrorMessageUtils {
     private SseErrorMessageUtils() {}
 
     public static int resolveCode(Throwable error) {
-        if (error instanceof BusinessException businessException) {
+        BusinessException businessException = findCause(error, BusinessException.class);
+        if (businessException != null) {
             return businessException.getCode();
         }
-        if (error instanceof InputGuardrailException) {
+        if (findCause(error, InputGuardrailException.class) != null) {
             return ErrorCode.PARAMS_ERROR.getCode();
         }
         return ErrorCode.SYSTEM_ERROR.getCode();
     }
 
     public static String resolveMessage(Throwable error) {
-        if (error instanceof BusinessException) {
-            return StrUtil.blankToDefault(error.getMessage(), ErrorCode.SYSTEM_ERROR.getMessage());
+        BusinessException businessException = findCause(error, BusinessException.class);
+        if (businessException != null) {
+            return StrUtil.blankToDefault(businessException.getMessage(), ErrorCode.SYSTEM_ERROR.getMessage());
         }
-        if (error instanceof InputGuardrailException) {
-            String guardrailMessage = extractGuardrailMessage(error.getMessage());
+        InputGuardrailException inputGuardrailException = findCause(error, InputGuardrailException.class);
+        if (inputGuardrailException != null) {
+            String guardrailMessage = extractGuardrailMessage(inputGuardrailException.getMessage());
             if (StrUtil.isNotBlank(guardrailMessage)) {
                 return guardrailMessage;
             }
@@ -45,5 +48,20 @@ public final class SseErrorMessageUtils {
         }
         Matcher matcher = GUARDRAIL_MESSAGE_PATTERN.matcher(message);
         return matcher.find() ? matcher.group(1).trim() : message;
+    }
+
+    private static <T extends Throwable> T findCause(Throwable error, Class<T> targetType) {
+        Throwable current = error;
+        while (current != null) {
+            if (targetType.isInstance(current)) {
+                return targetType.cast(current);
+            }
+            Throwable next = current.getCause();
+            if (next == current) {
+                break;
+            }
+            current = next;
+        }
+        return null;
     }
 }

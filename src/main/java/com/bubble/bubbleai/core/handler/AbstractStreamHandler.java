@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
+import com.bubble.bubbleai.exception.SseErrorMessageUtils;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
 import com.bubble.bubbleai.service.ChatHistoryService;
 import jakarta.annotation.Resource;
@@ -84,7 +85,7 @@ public abstract class AbstractStreamHandler implements StreamHandler {
     }
 
     private void saveErrorMessage(StreamHandleContext context, Throwable error) {
-        String errorMessage = error.getMessage();
+        String errorMessage = SseErrorMessageUtils.resolveMessage(error);
         if (StrUtil.isBlank(errorMessage)) {
             errorMessage = error.getClass().getSimpleName();
         }

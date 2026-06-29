@@ -14,6 +14,7 @@ import com.bubble.bubbleai.core.handler.AppCoverGenerator;
 import com.bubble.bubbleai.core.handler.StreamHandlerExecute;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
+import com.bubble.bubbleai.exception.SseErrorMessageUtils;
 import com.bubble.bubbleai.exception.ThrowUtils;
 import com.bubble.bubbleai.model.dto.app.AppAddRequest;
 import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
@@ -167,9 +168,28 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         chatHistoryService.addChatMessage(appId, loginUser.getId(),
                 ChatHistoryMessageTypeEnum.USER.getValue(), message, null);
         //6.调用AI生成代码
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-        return streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum);
+        try {
+            Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+            return streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum);
+        } catch (RuntimeException error) {
+            saveGenerationErrorMessage(appId, loginUser.getId(), error);
+            throw error;
+        }
 
+    }
+
+    private void saveGenerationErrorMessage(Long appId, Long userId, Throwable error) {
+        try {
+            chatHistoryService.addChatMessage(
+                    appId,
+                    userId,
+                    ChatHistoryMessageTypeEnum.ERROR.getValue(),
+                    "AI 回复失败：" + SseErrorMessageUtils.resolveMessage(error),
+                    null
+            );
+        } catch (Exception e) {
+            log.error("save sync AI error chat history failed, appId={}", appId, e);
+        }
     }
 
     @Override
