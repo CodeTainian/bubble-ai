@@ -5,6 +5,7 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.AiCodeGenTypeRoutingService;
+import com.bubble.bubbleai.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
@@ -62,7 +63,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private ReactProjectBuilder reactProjectBuilder;
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -297,6 +298,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         //应用名称暂时为initPrompt前12位
         app.setAppName(initPrompt.substring(0,Math.min(initPrompt.length(),12)));
         //使用AI智能选择代码生成类型
+        AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
         CodeGenTypeEnum selectedCodegenType = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
         app.setCodeGenType(selectedCodegenType.getValue());
         //插入数据库

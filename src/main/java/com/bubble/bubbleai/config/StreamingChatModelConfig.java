@@ -8,10 +8,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
-@Data
 @Configuration
-@ConfigurationProperties(prefix = "langchain4j.open-ai.reasoning-streaming-chat-model")
-public class ReasoningStreamingChatModelConfig {
+@ConfigurationProperties(prefix = "langchain4j.open-ai.streaming-chat-model")
+@Data
+public class StreamingChatModelConfig {
 
     private String baseUrl;
 
@@ -23,29 +23,21 @@ public class ReasoningStreamingChatModelConfig {
 
     private Double temperature;
 
-    private boolean logRequests = false;
+    private boolean logRequests;
 
-    private boolean logResponses = false;
+    private boolean logResponses;
 
-    /**
-     *推理流式模型（用于React 项目生成，带工具调用）
-     */
     @Bean
     @Scope("prototype")
-    public StreamingChatModel reasoningStreamingChatModelPrototype(){
-        final String modelName = "deepseek-chat";
-        final int maxTokens = 8192;
-        //生产环境调用
-        //final String modelName = "deepseek-reasoner";
-        //final int maxTokens = 32786;
+    public StreamingChatModel streamingChatModelPrototype() {
         return OpenAiStreamingChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .modelName(modelName)
                 .maxTokens(maxTokens)
-                .logRequests(true)
-                .logResponses(true)
+                .temperature(temperature)
+                .logRequests(logRequests)
+                .logResponses(logResponses)
                 .build();
     }
-
 }

@@ -17,6 +17,10 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
@@ -25,12 +29,14 @@ import java.time.Duration;
 @Configuration
 public class AiCodeGeneratorServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
-    @Resource
-    private StreamingChatModel openAiStreamingChatModel;
-    @Resource
-    private StreamingChatModel reasoningStreamingChatModel;
+    @Autowired
+    @Qualifier("reasoningStreamingChatModelPrototype")
+    private ObjectProvider<StreamingChatModel> reasoningStreamingChatModelProvider;
+    @Autowired
+    @Qualifier("streamingChatModelPrototype")
+    private ObjectProvider<StreamingChatModel> openAiStreamingChatModelProvider;
     @Resource
     private RedisChatMemoryStore redisChatMemoryStore;
     @Resource
@@ -75,8 +81,10 @@ public class AiCodeGeneratorServiceFactory {
         chatHistoryService.loadChatHistoryToMemory(appId,chatMemory,20);
         //根据不同的代码生成类型选择不同的模型配置
         return switch (codeGenTypeEnum){
-            //React 项目生成使用的推理模型
-            case REACT_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
+            //React 项目生成使用的推理模型,使用多例模式的 StreamingChatModel 解决并发问题
+            case REACT_PROJECT -> {
+              StreamingChatModel reasoningStreamingChatModel = reasoningStreamingChatModelProvider.getObject();
+              yield  AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
@@ -85,14 +93,23 @@ public class AiCodeGeneratorServiceFactory {
                             ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
                                     toolExecutionRequest.name()))
                     .build();
+            }
             //HTML和多文件生成时使用
-            case HTML,MULTI_FIlE -> AiServices.builder(AiCodeGeneratorService.class)
+            case HTML,MULTI_FIlE ->{
+                StreamingChatModel openAiStreamingChatModelProviderObject = openAiStreamingChatModelProvider.getObject();
+             yield  AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
-                    .streamingChatModel(openAiStreamingChatModel)
+                    .streamingChatModel(openAiStreamingChatModelProviderObject)
                     .chatMemory(chatMemory)
                     .build();
+            }
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的代码类型"+codeGenTypeEnum.getValue());
         };
+    }
+
+    @Bean
+    public AiCodeGeneratorService aiCodeGeneratorService(){
+        return getAiCodeGeneratorService(0);
     }
 
     /**
