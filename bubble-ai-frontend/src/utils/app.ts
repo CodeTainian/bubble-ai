@@ -3,9 +3,9 @@ import { Modal } from 'ant-design-vue'
 export const getAppName = (app: API.AppVO) => app.appName || '未命名应用'
 
 const CODE_GEN_TYPE_META: Record<string, { label: string; description: string }> = {
-  html: { label: 'html', description: '原生 HTML 模式' },
-  multi_file: { label: 'multi_file', description: '原生多文件模式' },
-  react_project: { label: 'react_project', description: 'React 工程模式' },
+  html: { label: '原生html模式', description: 'html' },
+  multi_file: { label: '原生多文件模式', description: 'multi_file' },
+  react_project: { label: 'React项目模式', description: 'react_project' },
 }
 
 export const normalizeCodeGenType = (codeGenType?: string) => (codeGenType || '').trim()

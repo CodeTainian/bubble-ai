@@ -107,7 +107,7 @@
                     <EditOutlined />
                   </a-button>
                 </a-tooltip>
-                <a-button class="composer-send-button" type="primary" shape="circle" :loading="generating" :disabled="!canChat || !input.trim()" @click="sendMessage"><ArrowUpOutlined /></a-button>
+                <a-button class="composer-send-button" type="primary" shape="circle" :loading="generating" :disabled="!canChat || !input.trim()" @click="sendMessage"><ArrowUpOutlined v-if="!generating" /></a-button>
               </div>
             </div>
           </div>
@@ -482,8 +482,15 @@ const isMessageListNearBottom = () => {
 const handleMessageListScroll = () => {
   followingOutput.value = isMessageListNearBottom()
 }
+const scrollLatestCodeBlockToBottom = (force = false) => {
+  if (!force && !followingOutput.value) return
+  const codeBlocks = messageList.value?.querySelectorAll<HTMLElement>('.message-row-assistant .code-block pre')
+  const latestCodeBlock = codeBlocks?.[codeBlocks.length - 1]
+  if (latestCodeBlock) latestCodeBlock.scrollTop = latestCodeBlock.scrollHeight
+}
 const scrollToBottom = (force = false) => nextTick(() => {
   if (!force && !followingOutput.value) return
+  scrollLatestCodeBlockToBottom(true)
   if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight
 })
 const resumeFollowingOutput = () => {
