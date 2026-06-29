@@ -15,6 +15,7 @@ spring:
       port: 6379
       password:
       ttl: 3600 # 缓存过期时间（秒）
+      database: 0
   session:
     timeout: 2592000s
 server:
@@ -23,6 +24,7 @@ server:
     context-path: /api
     session:
       cookie:
+        #设置30天过期
         same-site: none
         secure: true
         http-only: true
