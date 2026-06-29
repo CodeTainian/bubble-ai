@@ -9,6 +9,7 @@ import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.constant.UserConstant;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
+import com.bubble.bubbleai.exception.SseErrorMessageUtils;
 import com.bubble.bubbleai.exception.ThrowUtils;
 import com.bubble.bubbleai.model.dto.app.*;
 import com.bubble.bubbleai.model.entity.App;
@@ -294,15 +295,35 @@ public class AppController {
         //获取当前登录用户
         User loginUser = userService.getLoginUser(request);
         //调用服务器生成代码(流式)
-        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        Flux<String> contentFlux;
+        try {
+            contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        } catch (Throwable error) {
+            return Flux.just(buildBusinessErrorEvent(error), buildDoneEvent());
+        }
         //转换为ServerSentEvent格式
         return contentFlux.map(chunk->{
             Map<String,String> wrapper = Map.of("d",chunk);
             String jsonData = JSONUtil.toJsonStr(wrapper);
             return ServerSentEvent.<String>builder().data(jsonData).build();
-        }).concatWith(Mono.just(
-                //发送结束事件
-                ServerSentEvent.<String>builder().event("done").data("").build()));
+        }).onErrorResume(error -> Flux.just(buildBusinessErrorEvent(error)))
+                .concatWith(Mono.just(buildDoneEvent()));
+    }
+
+    private ServerSentEvent<String> buildBusinessErrorEvent(Throwable error) {
+        Map<String, Object> errorData = Map.of(
+                "error", true,
+                "code", SseErrorMessageUtils.resolveCode(error),
+                "message", SseErrorMessageUtils.resolveMessage(error)
+        );
+        return ServerSentEvent.<String>builder()
+                .event("business-error")
+                .data(JSONUtil.toJsonStr(errorData))
+                .build();
+    }
+
+    private ServerSentEvent<String> buildDoneEvent() {
+        return ServerSentEvent.<String>builder().event("done").data("").build();
     }
 
     /**

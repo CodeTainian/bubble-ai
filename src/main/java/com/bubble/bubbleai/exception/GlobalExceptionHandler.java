@@ -1,8 +1,9 @@
+package com.bubble.bubbleai.exception;
+
 import cn.hutool.json.JSONUtil;
 import com.bubble.bubbleai.common.BaseResponse;
 import com.bubble.bubbleai.common.ResultUtils;
-import com.bubble.bubbleai.exception.BusinessException;
-import com.bubble.bubbleai.exception.ErrorCode;
+import dev.langchain4j.guardrail.InputGuardrailException;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,18 +28,29 @@ public class GlobalExceptionHandler {
     public BaseResponse<?> businessExceptionHandler(BusinessException e) {
         log.error("BusinessException", e);
         // 尝试处理 SSE 请求
-        if (handleSseError(e.getCode(), e.getMessage())) {
+        if (handleSseError(SseErrorMessageUtils.resolveCode(e), SseErrorMessageUtils.resolveMessage(e))) {
             return null;
         }
         // 对于普通请求，返回标准 JSON 响应
         return ResultUtils.error(e.getCode(), e.getMessage());
     }
 
+    @ExceptionHandler(InputGuardrailException.class)
+    public BaseResponse<?> inputGuardrailExceptionHandler(InputGuardrailException e) {
+        log.warn("InputGuardrailException", e);
+        int errorCode = SseErrorMessageUtils.resolveCode(e);
+        String errorMessage = SseErrorMessageUtils.resolveMessage(e);
+        if (handleSseError(errorCode, errorMessage)) {
+            return null;
+        }
+        return ResultUtils.error(errorCode, errorMessage);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public BaseResponse<?> runtimeExceptionHandler(RuntimeException e) {
         log.error("RuntimeException", e);
         // 尝试处理 SSE 请求
-        if (handleSseError(ErrorCode.SYSTEM_ERROR.getCode(), "系统错误")) {
+        if (handleSseError(SseErrorMessageUtils.resolveCode(e), SseErrorMessageUtils.resolveMessage(e))) {
             return null;
         }
         return ResultUtils.error(ErrorCode.SYSTEM_ERROR, "系统错误");
@@ -58,6 +70,9 @@ public class GlobalExceptionHandler {
         }
         HttpServletRequest request = attributes.getRequest();
         HttpServletResponse response = attributes.getResponse();
+        if (response == null) {
+            return false;
+        }
         // 判断是否是SSE请求（通过Accept头或URL路径）
         String accept = request.getHeader("Accept");
         String uri = request.getRequestURI();
@@ -65,6 +80,7 @@ public class GlobalExceptionHandler {
                 uri.contains("/chat/gen/code")) {
             try {
                 // 设置SSE响应头
+                response.setStatus(HttpServletResponse.SC_OK);
                 response.setContentType("text/event-stream");
                 response.setCharacterEncoding("UTF-8");
                 response.setHeader("Cache-Control", "no-cache");
