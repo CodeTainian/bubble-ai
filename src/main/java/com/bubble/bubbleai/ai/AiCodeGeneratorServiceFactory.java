@@ -3,6 +3,7 @@ package com.bubble.bubbleai.ai;
 
 
 import com.bubble.bubbleai.ai.guardrail.PromptSafetyInputGuardrail;
+import com.bubble.bubbleai.ai.guardrail.RetryOutputGuardrail;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.ai.tools.*;
 import com.bubble.bubbleai.exception.BusinessException;
@@ -46,6 +47,8 @@ public class AiCodeGeneratorServiceFactory {
     private ToolManager toolManager;
     @Resource
     private PromptSafetyInputGuardrail promptSafetyInputGuardrail;
+    @Resource
+    private RetryOutputGuardrail retryOutputGuardrail;
 
     /**
      * Ai服务实例缓存
@@ -93,7 +96,7 @@ public class AiCodeGeneratorServiceFactory {
                     .chatMemoryProvider(memoryId -> chatMemory)
                     .tools((Object[]) toolManager.getAllTools())
                     .inputGuardrails(promptSafetyInputGuardrail)
-//                      .outputGuardrails(new RetryOutputGuardrail())
+//                      .outputGuardrails(retryOutputGuardrail)
                     .hallucinatedToolNameStrategy(toolExecutionRequest ->
                             ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
                                     toolExecutionRequest.name()))
@@ -107,7 +110,7 @@ public class AiCodeGeneratorServiceFactory {
                     .streamingChatModel(openAiStreamingChatModelProviderObject)
                     .chatMemory(chatMemory)
                      .inputGuardrails(promptSafetyInputGuardrail)
-//                     .outputGuardrails(new RetryOutputGuardrail())
+//                     .outputGuardrails(retryOutputGuardrail)
                     .build();
             }
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的代码类型"+codeGenTypeEnum.getValue());
