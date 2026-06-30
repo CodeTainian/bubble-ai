@@ -17,8 +17,11 @@ public class HtmlCodeParser implements CodeParser<HtmlCodeResult>{
         if (extractedHtmlCode != null&&!extractedHtmlCode.trim().isEmpty()) {
             htmlCodeResult.setHtmlCode(extractedHtmlCode);
         }else {
-            //如果没有提取到代码块，则将整个内容作为html
-            htmlCodeResult.setHtmlCode(codeContent);
+            // 如果没有提取到 HTML，则提取AI描述
+            String description = CodeBlockExtractor.extractSummaryAfterLastCodeBlock(codeContent);
+            if (description != null && !description.trim().isEmpty()) {
+                htmlCodeResult.setDescription(description.trim());
+            }
         }
         return htmlCodeResult;
     }

@@ -3,11 +3,13 @@ package com.bubble.bubbleai.ai.guardrail;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.guardrail.InputGuardrail;
 import dev.langchain4j.guardrail.InputGuardrailResult;
+import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
+@Component
 public class PromptSafetyInputGuardrail implements InputGuardrail {
 
     // 敏感词列表

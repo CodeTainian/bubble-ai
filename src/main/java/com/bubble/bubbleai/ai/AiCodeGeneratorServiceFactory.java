@@ -44,6 +44,8 @@ public class AiCodeGeneratorServiceFactory {
     private ChatHistoryService chatHistoryService;
     @Resource
     private ToolManager toolManager;
+    @Resource
+    private PromptSafetyInputGuardrail promptSafetyInputGuardrail;
 
     /**
      * Ai服务实例缓存
@@ -90,7 +92,7 @@ public class AiCodeGeneratorServiceFactory {
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
                     .tools((Object[]) toolManager.getAllTools())
-                    .inputGuardrails(new PromptSafetyInputGuardrail())
+                    .inputGuardrails(promptSafetyInputGuardrail)
 //                      .outputGuardrails(new RetryOutputGuardrail())
                     .hallucinatedToolNameStrategy(toolExecutionRequest ->
                             ToolExecutionResultMessage.from(toolExecutionRequest,"Error:there is no tool called"+
@@ -104,7 +106,7 @@ public class AiCodeGeneratorServiceFactory {
                     .chatModel(chatModel)
                     .streamingChatModel(openAiStreamingChatModelProviderObject)
                     .chatMemory(chatMemory)
-                     .inputGuardrails(new PromptSafetyInputGuardrail())
+                     .inputGuardrails(promptSafetyInputGuardrail)
 //                     .outputGuardrails(new RetryOutputGuardrail())
                     .build();
             }
