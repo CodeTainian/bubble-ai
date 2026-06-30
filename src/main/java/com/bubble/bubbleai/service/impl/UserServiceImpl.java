@@ -23,6 +23,7 @@ import org.springframework.util.DigestUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import static com.bubble.bubbleai.constant.UserConstant.USER_LOGIN_STATE;
@@ -34,6 +35,16 @@ import static com.bubble.bubbleai.constant.UserConstant.USER_LOGIN_STATE;
  */
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements UserService{
+
+    private static final String ENGLISH_LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    private static final String LETTERS_AND_DIGITS = ENGLISH_LETTERS + "0123456789";
+
+    private static final int USER_NAME_PREFIX_MIN_LENGTH = 6;
+
+    private static final int USER_NAME_PREFIX_MAX_LENGTH = 10;
+
+    private static final int USER_NAME_SUFFIX_LENGTH = 5;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -64,7 +75,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         user.setUserAccount(userAccount);
         user.setUserPassword(encryptPassword);
         user.setUserRole(UserRoleEnum.USER.getValue());
-        user.setUserName("无名");
+        user.setUserName(generateDefaultUserName());
         user.setUserAvatar(getDefaultAvatar(userAccount));
         boolean saveResult = this.save(user);
         if(!saveResult){
@@ -197,6 +208,23 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
     public String getDefaultAvatar(String userAccount) {
         String seed = DigestUtils.md5DigestAsHex(userAccount.getBytes());
         return UserConstant.USER_ACCOUNT_AVATAR + seed;
+    }
+
+    private static String generateDefaultUserName() {
+        int prefixLength = ThreadLocalRandom.current()
+                .nextInt(USER_NAME_PREFIX_MIN_LENGTH, USER_NAME_PREFIX_MAX_LENGTH + 1);
+        return randomChars(ENGLISH_LETTERS, prefixLength)
+                + "#"
+                + randomChars(LETTERS_AND_DIGITS, USER_NAME_SUFFIX_LENGTH);
+    }
+
+    private static String randomChars(String candidates, int length) {
+        StringBuilder builder = new StringBuilder(length);
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        for (int i = 0; i < length; i++) {
+            builder.append(candidates.charAt(random.nextInt(candidates.length())));
+        }
+        return builder.toString();
     }
 
 
