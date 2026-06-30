@@ -5,6 +5,9 @@
         <img src="@/assets/logo.svg" alt="Bubble AI" />
         <div><strong>{{ app.appName || 'AI 应用工作台' }}</strong><span>Bubble AI Studio</span></div>
       </RouterLink>
+      <div class="code-gen-mode" :title="codeGenModeDisplay">
+        <strong>{{ codeGenModeDisplay }}</strong>
+      </div>
       <div class="header-center" :style="{ left: previewToolbarLeft }">
         <div class="preview-actions">
           <a-tooltip :title="previewFullscreen ? '退出全屏预览' : '全屏预览'">
@@ -151,25 +154,6 @@
           </div>
         </div>
       </section>
-
-      <button
-        class="resize-handle"
-        type="button"
-        aria-label="调整版本栏宽度"
-        @pointerdown="startResize('versions', $event)"
-        @keydown.left.prevent="resizeWithKeyboard('versions', RESIZE_STEP)"
-        @keydown.right.prevent="resizeWithKeyboard('versions', -RESIZE_STEP)"
-      ></button>
-
-      <aside class="version-bar">
-        <h3>版本</h3>
-        <div class="version-card active">
-          <span>v1</span>
-          <div class="version-thumb">
-            <AppCover :cover="app.cover" :refresh-key="versionCoverRefreshKey" variant="thumb" />
-          </div>
-        </div>
-      </aside>
     </main>
   </div>
 </template>
@@ -186,9 +170,9 @@ import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
 import { deployApp, downloadAppCode, getAppVoById, rebuildApp } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
-import AppCover from '@/components/AppCover.vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_API_BASE_URL, APP_PREVIEW_BASE_URL } from '@/config/env'
+import { getCodeGenTypeDisplay } from '@/utils/app'
 import {
   buildVisualEditorPrompt,
   createVisualEditorBridge,
@@ -227,11 +211,10 @@ const historyLoading = ref(false), historyLoadingMore = ref(false), historyIniti
 const previewFullscreen = ref(false)
 const followingOutput = ref(true)
 const previewKey = ref(0)
-const versionCoverRefreshKey = ref(0)
 const messageList = ref<HTMLElement>()
 const workspace = ref<HTMLElement>()
 const previewFrame = ref<HTMLIFrameElement>()
-const conversationWidth = ref(520), versionWidth = ref(132)
+const conversationWidth = ref(520)
 const resizingPane = ref<ResizePane>()
 const visualEditMode = ref(false)
 const selectedVisualElement = ref<VisualEditorElementInfo>()
@@ -266,7 +249,7 @@ const previewPlaceholderText = computed(() => {
   if (previewCheckFailed.value) return '构建可能仍在继续，可以稍后重新检查预览。'
   return '在左侧输入你的想法，生成结果会出现在这里。'
 })
-const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr) 7px ${versionWidth.value}px`)
+const gridTemplateColumns = computed(() => `${conversationWidth.value}px 7px minmax(${MIN_PREVIEW_WIDTH}px, 1fr)`)
 const canChat = computed(() => Boolean(appLoaded.value && app.value.userId && loginUserStore.loginUser.id && String(app.value.userId) === String(loginUserStore.loginUser.id)))
 const chatPermissionTip = computed(() => appLoaded.value && !canChat.value ? '无法在别人的作品下对话哦~' : '')
 const loginUserInitial = computed(() => (loginUserStore.loginUser.userName || loginUserStore.loginUser.userAccount || '我').slice(0, 1))
@@ -285,14 +268,12 @@ const selectedVisualElementDescription = computed(() =>
   selectedVisualElement.value ? getVisualEditorElementDescription(selectedVisualElement.value) : ''
 )
 
-type ResizePane = 'conversation' | 'versions'
+type ResizePane = 'conversation'
 const MIN_CONVERSATION_WIDTH = 360
 const MAX_CONVERSATION_WIDTH = 660
 const MIN_PREVIEW_WIDTH = 540
-const MIN_VERSION_WIDTH = 116
-const MAX_VERSION_WIDTH = 280
 const RESIZE_STEP = 16
-const HANDLE_WIDTH = 14
+const HANDLE_WIDTH = 7
 const PREVIEW_TOOLBAR_SAFE_LEFT = 404
 const PREVIEW_TOOLBAR_OFFSET = 17
 const TYPEWRITER_INTERVAL = 18
@@ -360,6 +341,7 @@ const handlePreviewFrameLoad = () => {
 
 const normalizeCodeGenType = (codeGenType?: string) => (codeGenType || '').trim()
 const isReactProjectType = (codeGenType?: string) => normalizeCodeGenType(codeGenType) === REACT_PROJECT_CODE_GEN_TYPE
+const codeGenModeDisplay = computed(() => getCodeGenTypeDisplay(normalizeCodeGenType(app.value.codeGenType) || REACT_PROJECT_CODE_GEN_TYPE))
 const getPreferredPreviewCodeGenType = () =>
   normalizeCodeGenType(generatedCodeGenType.value)
   || normalizeCodeGenType(app.value.codeGenType)
@@ -457,18 +439,13 @@ const previewToolbarLeft = computed(() => {
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max))
 const availablePaneWidth = () => (workspace.value?.clientWidth || 0) - HANDLE_WIDTH - MIN_PREVIEW_WIDTH
 const resizeConversation = (width: number) => {
-  conversationWidth.value = clamp(width, MIN_CONVERSATION_WIDTH, Math.min(MAX_CONVERSATION_WIDTH, availablePaneWidth() - versionWidth.value))
-}
-const resizeVersions = (width: number) => {
-  versionWidth.value = clamp(width, MIN_VERSION_WIDTH, Math.min(MAX_VERSION_WIDTH, availablePaneWidth() - conversationWidth.value))
+  conversationWidth.value = clamp(width, MIN_CONVERSATION_WIDTH, Math.min(MAX_CONVERSATION_WIDTH, availablePaneWidth()))
 }
 const resizeWithKeyboard = (pane: ResizePane, delta: number) => {
   if (pane === 'conversation') resizeConversation(conversationWidth.value + delta)
-  else resizeVersions(versionWidth.value + delta)
 }
 const resizeOnPointerMove = (event: PointerEvent) => {
   if (resizingPane.value === 'conversation') resizeConversation(resizeStartWidth + event.clientX - resizeStartX)
-  if (resizingPane.value === 'versions') resizeVersions(resizeStartWidth - event.clientX + resizeStartX)
 }
 const stopResize = () => {
   resizingPane.value = undefined
@@ -480,7 +457,7 @@ const startResize = (pane: ResizePane, event: PointerEvent) => {
   event.preventDefault()
   resizingPane.value = pane
   resizeStartX = event.clientX
-  resizeStartWidth = pane === 'conversation' ? conversationWidth.value : versionWidth.value
+  resizeStartWidth = conversationWidth.value
   window.addEventListener('pointermove', resizeOnPointerMove)
   window.addEventListener('pointerup', stopResize)
   window.addEventListener('pointercancel', stopResize)
@@ -657,7 +634,6 @@ const syncGeneratedAppInfo = async () => {
         const nextCover = res.data.data.cover
         const nextUpdateTime = res.data.data.updateTime
         if (nextCover) {
-          versionCoverRefreshKey.value = Date.now()
           const coverChanged = nextCover !== previousCover
           const coverCreated = !previousCover
           const coverUpdated = Boolean(previousUpdateTime && nextUpdateTime && nextUpdateTime !== previousUpdateTime)
@@ -1104,6 +1080,39 @@ onBeforeUnmount(() => {
   font-size: 11px;
   letter-spacing: 1.8px;
 }
+.code-gen-mode {
+  position: absolute;
+  top: 50%;
+  left: 354px;
+  z-index: 1;
+  display: inline-flex;
+  max-width: 220px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: 1px solid rgba(22, 170, 161, .18);
+  border-radius: 999px;
+  color: #6f7f82;
+  background: rgba(255, 255, 255, .72);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, .05);
+  transform: translateY(-50%);
+}
+.code-gen-mode span,
+.code-gen-mode strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.code-gen-mode span {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+.code-gen-mode strong {
+  color: #168f88;
+  font-size: 13px;
+  font-weight: 800;
+}
 .header-center {
   position: absolute;
   top: 0;
@@ -1165,7 +1174,7 @@ onBeforeUnmount(() => {
   background: #f5f7f9;
 }
 .preview-fullscreen .workspace {
-  grid-template-columns: 0 0 minmax(0, 1fr) 0 132px !important;
+  grid-template-columns: 0 0 minmax(0, 1fr) !important;
 }
 .resize-handle {
   position: relative;
@@ -1206,8 +1215,7 @@ onBeforeUnmount(() => {
 .resizing iframe {
   pointer-events: none;
 }
-.conversation,
-.version-bar {
+.conversation {
   background: #f5f7f9;
 }
 .conversation {
@@ -1225,7 +1233,7 @@ onBeforeUnmount(() => {
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 28px 34px 174px;
+  padding: 28px 34px 24px;
 }
 .welcome {
   display: flex;
@@ -1378,7 +1386,7 @@ onBeforeUnmount(() => {
 }
 .scroll-to-latest {
   position: absolute;
-  bottom: 150px;
+  bottom: 152px;
   left: 50%;
   z-index: 1;
   padding: 7px 13px;
@@ -1396,10 +1404,10 @@ onBeforeUnmount(() => {
   background: #f4fbfa;
 }
 .composer-wrap {
-  position: absolute;
-  right: 14px;
-  bottom: 18px;
-  left: 14px;
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  margin: 0 14px 18px;
 }
 .composer {
   padding: 14px 14px 12px;
@@ -1631,25 +1639,5 @@ onBeforeUnmount(() => {
   to {
     transform: rotate(360deg);
   }
-}
-.version-bar {
-  padding: 18px 10px;
-  background: #f5f7f9;
-}
-.version-bar h3 {
-  margin: 0 0 14px;
-  font-size: 15px;
-}
-.version-card {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #18aaa0;
-  border-radius: 12px;
-  color: #138f88;
-  background: #f4fbfa;
-  text-align: left;
-}
-.version-thumb {
-  margin-top: 8px;
 }
 </style>
