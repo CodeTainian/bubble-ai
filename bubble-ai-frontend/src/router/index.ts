@@ -48,7 +48,7 @@ const router = createRouter({
       path: '/app/chat/:id',
       name: '应用生成',
       component: AppChatPage,
-      meta: { fullscreen: true },
+      meta: { fullscreen: true, keepAlive: true },
     },
     {
       path: '/app/edit/:id',

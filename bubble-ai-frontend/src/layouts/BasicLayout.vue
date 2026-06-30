@@ -3,7 +3,20 @@
     <GlobalHeader v-if="!route.meta.fullscreen" />
 
     <a-layout-content class="main-content" :class="{ 'fullscreen-content': route.meta.fullscreen, 'full-bleed-content': route.meta.fullBleed }">
-      <router-view />
+      <router-view v-slot="{ Component, route: viewRoute }">
+        <KeepAlive>
+          <component
+            :is="Component"
+            v-if="viewRoute.meta.keepAlive"
+            :key="viewRoute.path"
+          />
+        </KeepAlive>
+        <component
+          :is="Component"
+          v-if="!viewRoute.meta.keepAlive"
+          :key="viewRoute.fullPath"
+        />
+      </router-view>
     </a-layout-content>
 
     <GlobalFooter v-if="!route.meta.fullscreen" />

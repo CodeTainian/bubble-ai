@@ -175,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import { ArrowUpOutlined, CodeOutlined, DownloadOutlined, EditOutlined, FullscreenExitOutlined, FullscreenOutlined, MessageOutlined, ReloadOutlined, RocketOutlined, UpOutlined } from '@ant-design/icons-vue'
@@ -215,6 +215,7 @@ hljs.registerLanguage('javascript', javascript)
 hljs.registerLanguage('js', javascript)
 
 const route = useRoute(), router = useRouter()
+defineOptions({ name: 'AppChatPage' })
 const loginUserStore = useLoginUserStore()
 const id = String(route.params.id)
 const app = ref<API.AppVO>({})
@@ -1031,6 +1032,14 @@ watch(canUseVisualEditor, (canUse) => {
 })
 
 onMounted(loadApp)
+onActivated(() => {
+  if (generating.value) resumeFollowingOutput()
+})
+onDeactivated(() => {
+  previewFullscreen.value = false
+  resetVisualEditorState()
+  stopResize()
+})
 onBeforeUnmount(() => {
   previewFullscreen.value = false
   visualEditorBridge.destroy()
