@@ -40,3 +40,6 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+app:
+  preview-base-url: ${APP_PREVIEW_BASE_URL:http://localhost:8123/api/static}

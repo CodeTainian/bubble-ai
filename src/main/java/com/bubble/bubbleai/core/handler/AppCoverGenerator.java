@@ -9,6 +9,7 @@ import com.bubble.bubbleai.model.entity.App;
 import com.bubble.bubbleai.service.ScreenshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -26,6 +27,9 @@ public class AppCoverGenerator {
     private final ScreenshotService screenshotService;
 
     private final AppMapper appMapper;
+
+    @Value("${app.preview-base-url:http://localhost:8123/api/static}")
+    private String previewBaseUrl;
 
     /**
      * 异步生成应用封面，失败不影响主流程。
@@ -76,9 +80,10 @@ public class AppCoverGenerator {
     }
 
     private String buildPreviewUrl(String sourceDirName, String codeGenType) {
+        String baseUrl = StrUtil.removeSuffix(previewBaseUrl, "/");
         if (CodeGenTypeEnum.REACT_PROJECT.getValue().equals(codeGenType)) {
-            return String.format("%s/%s/dist/index.html", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
+            return String.format("%s/%s/dist/index.html", baseUrl, sourceDirName);
         }
-        return String.format("%s/%s/", CaptureConstant.CAPTURE_PREVIEW_COVER, sourceDirName);
+        return String.format("%s/%s/", baseUrl, sourceDirName);
     }
 }

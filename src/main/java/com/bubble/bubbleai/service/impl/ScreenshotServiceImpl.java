@@ -13,26 +13,39 @@ import java.nio.file.Paths;
 public class ScreenshotServiceImpl implements ScreenshotService {
     @Override
     public void captureHomePage(String url, String savePath) {
-        try (Playwright playwright = Playwright.create()) {
-            Browser browser = playwright.chromium().launch(
+        try (Playwright playwright = createPlaywright()) {
+            try (Browser browser = playwright.chromium().launch(
                     new BrowserType.LaunchOptions()
                             .setHeadless(true)
-            );
+            )) {
 
-            Page page = browser.newPage(
-                    new Browser.NewPageOptions()
-                            .setViewportSize(1280, 720)
-            );
+                Page page = browser.newPage(
+                        new Browser.NewPageOptions()
+                                .setViewportSize(1280, 720)
+                );
 
-            page.navigate(url);
-            page.waitForLoadState();
+                page.navigate(url);
+                page.waitForLoadState();
 
-            page.screenshot(
-                    new Page.ScreenshotOptions()
-                            .setPath(Paths.get(savePath))
-                            .setFullPage(false)
-            );
-            browser.close();
+                page.screenshot(
+                        new Page.ScreenshotOptions()
+                                .setPath(Paths.get(savePath))
+                                .setFullPage(false)
+                );
+            }
+        }
+    }
+
+    private Playwright createPlaywright() {
+        Thread currentThread = Thread.currentThread();
+        ClassLoader originalClassLoader = currentThread.getContextClassLoader();
+        ClassLoader playwrightClassLoader = Playwright.class.getClassLoader();
+        try {
+            // Playwright's Java driver loads bundled resources through the thread context classloader.
+            currentThread.setContextClassLoader(playwrightClassLoader);
+            return Playwright.create();
+        } finally {
+            currentThread.setContextClassLoader(originalClassLoader);
         }
     }
 }

@@ -13,9 +13,8 @@ public interface CaptureConstant {
     String CAPTURE_DEPLOY_COVER = System.getProperty("user.dir") + "/tmp/deploy_covers";
 
     /**
-     * donate for application
+     * 应用封面访问前缀。
      */
-    String CAPTURE_HOST = "http://localhost:8080";
+    String CAPTURE_HOST = "/api";
 
-    String CAPTURE_PREVIEW_COVER = "http://localhost:8123/api/static";
 }
