@@ -63,7 +63,7 @@ import { reactive } from 'vue';
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue';
 import { userLogin } from '@/api/userController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import '@/assets/auth.css'
 
@@ -74,7 +74,17 @@ const formState = reactive<API.UserLoginRequest>({
 });
 
 const router = useRouter();
+const route = useRoute();
 const loginUserStore = useLoginUserStore();
+
+const getRedirectPath = () => {
+  const rawRedirect = route.query.redirect
+  const redirect = Array.isArray(rawRedirect) ? rawRedirect[0] : rawRedirect
+  if (!redirect) return '/'
+  const url = new URL(redirect, window.location.origin)
+  if (url.origin !== window.location.origin) return '/'
+  return `${url.pathname}${url.search}${url.hash}` || '/'
+}
 
 /**
  * 提交表单
@@ -84,12 +94,9 @@ const handleSubmit = async (values: API.UserLoginRequest) => {
   const res = await userLogin(values);
   if (res.data.code===0&&res.data.data
   ) {
-await loginUserStore.fetchLoginUser();
-message.success("登录成功")
-    router.push({
-      path: '/',
-      replace: true,
-    })
+    loginUserStore.setLoginUser(res.data.data)
+    message.success("登录成功")
+    await router.replace(getRedirectPath())
 
   }else {
     message.error("登录失败"+res.data.message)
