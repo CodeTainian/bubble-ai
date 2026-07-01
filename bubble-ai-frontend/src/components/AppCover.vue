@@ -1,7 +1,7 @@
 <template>
   <div class="app-cover" :class="[`app-cover-${variant}`, { 'has-overlay': Boolean($slots.overlay) }]">
-    <a-image v-if="coverUrl && preview" :src="coverUrl" :alt="alt" :preview="preview" />
-    <img v-else-if="coverUrl" :src="coverUrl" :alt="alt" class="cover-image" />
+    <a-image v-if="showCover && preview" :src="coverUrl" :alt="alt" :preview="preview" @error="markCoverFailed" />
+    <img v-else-if="showCover" :src="coverUrl" :alt="alt" class="cover-image" @error="markCoverFailed" />
     <div v-else class="cover-placeholder">
       <img src="@/assets/logo.svg" alt="" />
       <span v-if="placeholder">{{ placeholder }}</span>
@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{
   alt?: string
@@ -29,11 +29,45 @@ const props = withDefaults(defineProps<{
   variant: 'card',
 })
 
-const coverUrl = computed(() => {
+const coverLoadFailed = ref(false)
+
+const rawCoverUrl = computed(() => {
   if (!props.cover) return ''
   if (!props.refreshKey) return props.cover
   const separator = props.cover.includes('?') ? '&' : '?'
   return `${props.cover}${separator}t=${props.refreshKey}`
+})
+
+const isLoopbackHost = (host: string) => ['localhost', '127.0.0.1', '0.0.0.0', '[::1]', '::1'].includes(host)
+
+const normalizeCoverUrl = (value: string) => {
+  if (!value) return ''
+  try {
+    const coverUrl = new URL(value, window.location.origin)
+    const isAbsoluteUrl = /^[a-z][a-z\d+\-.]*:\/\//i.test(value)
+    const isOutputCover = coverUrl.pathname.startsWith('/output_covers/')
+    if (!isOutputCover) return value
+
+    const canUseApiProxy =
+      !isAbsoluteUrl ||
+      coverUrl.hostname === window.location.hostname ||
+      (isLoopbackHost(coverUrl.hostname) && isLoopbackHost(window.location.hostname))
+
+    return canUseApiProxy ? `/api${coverUrl.pathname}${coverUrl.search}${coverUrl.hash}` : value
+  } catch {
+    return value
+  }
+}
+
+const coverUrl = computed(() => normalizeCoverUrl(rawCoverUrl.value))
+const showCover = computed(() => Boolean(coverUrl.value) && !coverLoadFailed.value)
+
+const markCoverFailed = () => {
+  coverLoadFailed.value = true
+}
+
+watch(rawCoverUrl, () => {
+  coverLoadFailed.value = false
 })
 </script>
 
