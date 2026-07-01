@@ -33,6 +33,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -65,6 +66,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private ReactProjectBuilder reactProjectBuilder;
     @Resource
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
+    @Value("${code.deploy-host:http://localhost}")
+    private String deployHost;
 
     @Override
     public AppVO getAppVO(App app) {
@@ -244,7 +247,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(!updateResult,ErrorCode.OPERATION_ERROR,"更新应用部署信息失败");
         //11.返回可访问的url
        // return AppConstant.CODE_DEPLOY_HOST + File.separator + deployKey;
-        return String.format("%s/%s/",AppConstant.CODE_DEPLOY_HOST,deployKey);
+        return String.format("%s/%s/",deployHost,deployKey);
 
     }
 
