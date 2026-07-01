@@ -126,6 +126,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
     @Override
     public User getLoginUser(HttpServletRequest request) {
         HttpSession session = request.getSession(false);
+        if (session == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
         Object userObj = session.getAttribute(USER_LOGIN_STATE);
         User currentUser = (User) userObj;
         if (currentUser == null||currentUser.getId() == null) {

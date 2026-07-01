@@ -25,8 +25,10 @@ server:
     session:
       cookie:
         #设置30天过期
-        same-site: none
-        secure: true
+        # HTTP 部署默认使用 lax + 非 secure，否则浏览器会拒绝保存 session cookie
+        # 若部署为 HTTPS 且前后端跨站访问，可通过环境变量改为 none + true
+        same-site: ${SESSION_COOKIE_SAME_SITE:lax}
+        secure: ${SESSION_COOKIE_SECURE:false}
         http-only: true
         max-age: 2592000
 #springdoc-openapi
