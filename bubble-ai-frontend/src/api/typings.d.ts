@@ -144,6 +144,10 @@ declare namespace API {
     message: string
   }
 
+  type getGenerationStatusParams = {
+    appId: string
+  }
+
   type DeleteRequest = {
     id?: string
   }

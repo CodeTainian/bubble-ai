@@ -1,4 +1,4 @@
-// @ts-ignore
+
 /* eslint-disable */
 import request from '@/request'
 
@@ -78,6 +78,20 @@ export async function chatToGenCode(
   options?: { [key: string]: any }
 ) {
   return request<API.ServerSentEventString[]>('/app/chat/gen/code', {
+    method: 'GET',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
+/** 查询应用是否正在生成 GET /app/chat/gen/status */
+export async function getGenerationStatus(
+  params: API.getGenerationStatusParams,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseBoolean>('/app/chat/gen/status', {
     method: 'GET',
     params: {
       ...params,

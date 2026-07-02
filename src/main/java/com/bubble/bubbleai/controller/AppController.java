@@ -307,6 +307,42 @@ public class AppController {
             return Flux.just(buildBusinessErrorEvent(error), buildDoneEvent());
         }
         //转换为ServerSentEvent格式
+        return toSse(contentFlux);
+    }
+
+    /**
+     * 继续监听正在生成的代码流，用于页面刷新后恢复连接。
+     * @param appId 应用ID
+     * @param request 请求对象
+     * @return 生成结果流
+     */
+    @GetMapping(value = "/chat/gen/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> watchGeneratingCode(@RequestParam Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId==null||appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID无效");
+        User loginUser = userService.getLoginUser(request);
+        Flux<String> contentFlux;
+        try {
+            contentFlux = appService.watchGeneratingCode(appId, loginUser);
+        } catch (Throwable error) {
+            return Flux.just(buildBusinessErrorEvent(error), buildDoneEvent());
+        }
+        return toSse(contentFlux);
+    }
+
+    /**
+     * 查询应用是否仍有后台生成任务。
+     * @param appId 应用ID
+     * @param request 请求对象
+     * @return 是否正在生成
+     */
+    @GetMapping("/chat/gen/status")
+    public BaseResponse<Boolean> getGenerationStatus(@RequestParam Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId==null||appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID无效");
+        User loginUser = userService.getLoginUser(request);
+        return ResultUtils.success(appService.isGenerating(appId, loginUser));
+    }
+
+    private Flux<ServerSentEvent<String>> toSse(Flux<String> contentFlux) {
         return contentFlux.map(chunk->{
             Map<String,String> wrapper = Map.of("d",chunk);
             String jsonData = JSONUtil.toJsonStr(wrapper);

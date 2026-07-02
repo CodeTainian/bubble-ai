@@ -58,6 +58,22 @@ public interface AppService extends IService<App> {
     Flux<String> chatToGenCode(Long appId, String message, User loginUser);
 
     /**
+     * 继续监听正在生成的应用代码
+     * @param appId 应用ID
+     * @param loginUser 登录用户
+     * @return 流式响应内容
+     */
+    Flux<String> watchGeneratingCode(Long appId, User loginUser);
+
+    /**
+     * 查询应用是否正在生成
+     * @param appId 应用ID
+     * @param loginUser 登录用户
+     * @return 是否正在生成
+     */
+    Boolean isGenerating(Long appId, User loginUser);
+
+    /**
      * 应用部署
      * @param appId 应用ID
      * @param loginUser 登录用户

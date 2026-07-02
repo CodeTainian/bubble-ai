@@ -11,6 +11,7 @@ import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
 import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.core.handler.AppCoverGenerator;
+import com.bubble.bubbleai.core.handler.GenerationTaskManager;
 import com.bubble.bubbleai.core.handler.StreamHandlerExecute;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
@@ -66,6 +67,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private ReactProjectBuilder reactProjectBuilder;
     @Resource
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
+    @Resource
+    private GenerationTaskManager generationTaskManager;
     @Value("${code.deploy-host:http://localhost}")
     private String deployHost;
 
@@ -154,18 +157,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         //1.参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID不能为空");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
-        //2.查询应用信息
-        App app = this.getById(appId);
-        ThrowUtils.throwIf(app==null,ErrorCode.NOT_FOUND_ERROR,"应用不存在");
-        //3.验证用户是否有权限访问该应用，仅本人可以生成代码
-        if (!app.getUserId().equals(loginUser.getId())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR,"无权限访问该应用");
-        }
-        //4.获取应用的代码生成类型
-        String codeGenType = app.getCodeGenType();
-        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
-        if (codeGenTypeEnum == null) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的应用生成类型");
+        App app = validateGenerationAccess(appId, loginUser);
+        CodeGenTypeEnum codeGenTypeEnum = getCodeGenType(app);
+        Optional<Flux<String>> runningFlux = generationTaskManager.getTaskFlux(appId);
+        if (runningFlux.isPresent()) {
+            return runningFlux.get();
         }
         //5.保存用户消息
         chatHistoryService.addChatMessage(appId, loginUser.getId(),
@@ -173,12 +169,45 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         //6.调用AI生成代码
         try {
             Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-            return streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum);
+            Flux<String> handledStream = streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum);
+            return generationTaskManager.start(appId, handledStream);
         } catch (RuntimeException error) {
             saveGenerationErrorMessage(appId, loginUser.getId(), error);
             throw error;
         }
 
+    }
+
+    @Override
+    public Flux<String> watchGeneratingCode(Long appId, User loginUser) {
+        validateGenerationAccess(appId, loginUser);
+        return generationTaskManager.getTaskFlux(appId).orElseGet(Flux::empty);
+    }
+
+    @Override
+    public Boolean isGenerating(Long appId, User loginUser) {
+        validateGenerationAccess(appId, loginUser);
+        return generationTaskManager.isRunning(appId);
+    }
+
+    private App validateGenerationAccess(Long appId, User loginUser) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR, "用户未登录");
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app==null,ErrorCode.NOT_FOUND_ERROR,"应用不存在");
+        if (!app.getUserId().equals(loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR,"无权限访问该应用");
+        }
+        return app;
+    }
+
+    private CodeGenTypeEnum getCodeGenType(App app) {
+        String codeGenType = app.getCodeGenType();
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == null) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR,"不支持的应用生成类型");
+        }
+        return codeGenTypeEnum;
     }
 
     private void saveGenerationErrorMessage(Long appId, Long userId, Throwable error) {

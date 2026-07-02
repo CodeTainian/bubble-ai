@@ -168,7 +168,7 @@ import css from 'highlight.js/lib/languages/css'
 import javascript from 'highlight.js/lib/languages/javascript'
 import xml from 'highlight.js/lib/languages/xml'
 import 'highlight.js/styles/github.css'
-import { deployApp, downloadAppCode, getAppVoById, rebuildApp } from '@/api/appController'
+import { deployApp, downloadAppCode, getAppVoById, getGenerationStatus, rebuildApp } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_API_BASE_URL, APP_PREVIEW_BASE_URL } from '@/config/env'
@@ -545,7 +545,7 @@ const syncPreviewReadyWithHistory = () => {
     resetPreviewState()
     return
   }
-  void resolvePreviewReady()
+  void resolvePreviewReady(PREVIEW_READY_RETRY_COUNT)
 }
 const loadInitialHistory = async () => {
   historyLoading.value = true
@@ -576,6 +576,37 @@ const loadInitialHistory = async () => {
   } finally {
     historyLoading.value = false
   }
+}
+const resumeActiveGeneration = async () => {
+  if (!canChat.value) return false
+  try {
+    const res = await getGenerationStatus({ appId: id })
+    if (res.data.code !== 0 || !res.data.data) return false
+  } catch {
+    return false
+  }
+  eventSource?.close()
+  resetTypewriter()
+  resetVisualEditorState()
+  activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true }) - 1
+  generating.value = true
+  const activeCodeGenType = getActiveGenerationCodeGenType()
+  previewSnapshotBeforeGeneration = {
+    ready: previewReady.value,
+    entryUrl: previewEntryUrl.value,
+    codeGenType: generatedCodeGenType.value,
+    historyIndicatesReactProject: historyIndicatesReactProject.value,
+  }
+  generatedCodeGenType.value = activeCodeGenType
+  historyIndicatesReactProject.value = isReactProjectType(activeCodeGenType)
+  previewCheckId++
+  previewReady.value = false
+  previewEntryUrl.value = ''
+  previewChecking.value = false
+  previewCheckFailed.value = false
+  previewRebuilding.value = false
+  openGenerationStream(`${APP_API_BASE_URL}/app/chat/gen/stream?appId=${id}`)
+  return true
 }
 const loadMoreHistory = async () => {
   if (!hasMoreHistory.value || historyLoadingMore.value) return
@@ -616,7 +647,8 @@ const loadApp = async () => {
   if (route.query.auto === '1') {
     await router.replace({ path: route.path })
   }
-  if (historyLoaded && canChat.value && loadedHistoryTotal === 0 && loadedHistoryKeys.size === 0 && app.value.initPrompt) {
+  const resumedGenerating = historyLoaded ? await resumeActiveGeneration() : false
+  if (!resumedGenerating && historyLoaded && canChat.value && loadedHistoryTotal === 0 && loadedHistoryKeys.size === 0 && app.value.initPrompt) {
     send(app.value.initPrompt)
   }
 }
@@ -646,33 +678,8 @@ const syncGeneratedAppInfo = async () => {
     await sleep(COVER_SYNC_POLL_DELAY)
   }
 }
-const send = (content: string) => {
-  if (!content.trim() || generating.value || !canChat.value) return
-  const userMessage = content.trim()
-  const aiMessage = buildVisualEditorPrompt(userMessage, selectedVisualElement.value)
-  eventSource?.close()
-  resetTypewriter()
-  messages.value.push({ role: 'user', content: userMessage })
-  activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true }) - 1
-  input.value = ''
-  resetVisualEditorState()
-  generating.value = true
-  const activeCodeGenType = getActiveGenerationCodeGenType()
-  previewSnapshotBeforeGeneration = {
-    ready: previewReady.value,
-    entryUrl: previewEntryUrl.value,
-    codeGenType: generatedCodeGenType.value,
-    historyIndicatesReactProject: historyIndicatesReactProject.value,
-  }
-  generatedCodeGenType.value = activeCodeGenType
-  historyIndicatesReactProject.value = isReactProjectType(activeCodeGenType)
-  previewCheckId++
-  previewReady.value = false
-  previewEntryUrl.value = ''
-  previewChecking.value = false
-  previewCheckFailed.value = false
-  previewRebuilding.value = false
-  const source = new EventSource(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`, { withCredentials: true })
+const openGenerationStream = (url: string) => {
+  const source = new EventSource(url, { withCredentials: true })
   eventSource = source
   source.onmessage = (event) => {
     if (isBusinessErrorChunk(event.data)) {
@@ -700,6 +707,34 @@ const send = (content: string) => {
     finishGeneration(source)
   }
   resumeFollowingOutput()
+}
+const send = (content: string) => {
+  if (!content.trim() || generating.value || !canChat.value) return
+  const userMessage = content.trim()
+  const aiMessage = buildVisualEditorPrompt(userMessage, selectedVisualElement.value)
+  eventSource?.close()
+  resetTypewriter()
+  messages.value.push({ role: 'user', content: userMessage })
+  activeAssistantIndex = messages.value.push({ role: 'assistant', content: '', pending: true }) - 1
+  input.value = ''
+  resetVisualEditorState()
+  generating.value = true
+  const activeCodeGenType = getActiveGenerationCodeGenType()
+  previewSnapshotBeforeGeneration = {
+    ready: previewReady.value,
+    entryUrl: previewEntryUrl.value,
+    codeGenType: generatedCodeGenType.value,
+    historyIndicatesReactProject: historyIndicatesReactProject.value,
+  }
+  generatedCodeGenType.value = activeCodeGenType
+  historyIndicatesReactProject.value = isReactProjectType(activeCodeGenType)
+  previewCheckId++
+  previewReady.value = false
+  previewEntryUrl.value = ''
+  previewChecking.value = false
+  previewCheckFailed.value = false
+  previewRebuilding.value = false
+  openGenerationStream(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`)
 }
 const normalizeChunk = (chunk: string) => {
   try {
