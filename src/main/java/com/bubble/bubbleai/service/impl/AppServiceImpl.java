@@ -8,6 +8,7 @@ import com.bubble.bubbleai.ai.AiCodeGenTypeRoutingService;
 import com.bubble.bubbleai.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
+import com.bubble.bubbleai.constant.CaptureConstant;
 import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
 import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.core.handler.AppCoverGenerator;
@@ -332,7 +333,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     /**
-     * 删除应用时关联删除对话历史
+     * 删除应用时关联删除对话历史和应用封面
      *
      * @param id 应用ID
      * @return 是否成功
@@ -347,6 +348,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (appId <= 0) {
             return false;
         }
+        App app = this.getById(appId);
         // 先删除关联的对话历史
         try {
             chatHistoryService.removeByAppId(appId);
@@ -355,7 +357,65 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             log.error("删除应用关联对话历史失败: {}", e.getMessage());
         }
         // 删除应用
-        return super.removeById(id);
+        boolean removed = super.removeById(id);
+        if (removed) {
+            deleteAppCover(app, appId);
+        }
+        return removed;
+    }
+
+    /**
+     * 删除应用封面文件，失败不影响应用删除流程。
+     */
+    private void deleteAppCover(App app, Long appId) {
+        if (app == null) {
+            return;
+        }
+        Set<String> coverFileNames = new HashSet<>();
+        String coverFileName = parseLocalCoverFileName(app.getCover());
+        if (StrUtil.isNotBlank(coverFileName)) {
+            coverFileNames.add(coverFileName);
+        }
+        if (StrUtil.isNotBlank(app.getCodeGenType())) {
+            coverFileNames.add(app.getCodeGenType() + "_" + appId + ".png");
+        }
+        for (String fileName : coverFileNames) {
+            if (!isSafeCoverFileName(fileName)) {
+                log.warn("跳过非法应用封面文件名，appId={}, fileName={}", appId, fileName);
+                continue;
+            }
+            File coverFile = new File(CaptureConstant.CAPTURE_OUTPUT_COVER, fileName);
+            if (!coverFile.exists()) {
+                continue;
+            }
+            try {
+                boolean deleted = FileUtil.del(coverFile);
+                if (!deleted) {
+                    log.warn("删除应用封面失败，appId={}, filePath={}", appId, coverFile.getAbsolutePath());
+                }
+            } catch (Exception e) {
+                log.error("删除应用封面异常，appId={}, filePath={}", appId, coverFile.getAbsolutePath(), e);
+            }
+        }
+    }
+
+    private String parseLocalCoverFileName(String cover) {
+        if (StrUtil.isBlank(cover)) {
+            return null;
+        }
+        String coverPath = StrUtil.subBefore(cover, "?", false).trim();
+        String outputCoversPath = CaptureConstant.CAPTURE_HOST + "/output_covers/";
+        if (!coverPath.startsWith(outputCoversPath)) {
+            return null;
+        }
+        return coverPath.substring(outputCoversPath.length());
+    }
+
+    private boolean isSafeCoverFileName(String fileName) {
+        return StrUtil.isNotBlank(fileName)
+                && fileName.equals(new File(fileName).getName())
+                && !fileName.contains("..")
+                && !fileName.contains("\\");
     }
 
 }
