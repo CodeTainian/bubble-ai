@@ -45,3 +45,6 @@ knife4j:
 
 app:
   preview-base-url: ${APP_PREVIEW_BASE_URL:http://localhost:8123/api/static}
+  cleanup:
+    cron: ${APP_CLEANUP_CRON:0 0 3 * * ?}
+    batch-size: ${APP_CLEANUP_BATCH_SIZE:100}
