@@ -67,7 +67,7 @@ public class FileDirReadTool extends BaseTool {
             }
             StringBuilder structure = new StringBuilder();
             structure.append("项目目录结构:\n");
-            List<File> allFiles = FileUtil.loopFiles(targetDir, file -> !shouldIgnore(file.getName()));
+            List<File> allFiles = FileUtil.loopFiles(targetDir, file -> !shouldIgnore(targetDir, file));
             allFiles.stream().sorted((f1, f2) -> {
                 int depth1 = getRelativeDepth(targetDir, f1);
                 int depth2 = getRelativeDepth(targetDir, f2);
@@ -78,7 +78,7 @@ public class FileDirReadTool extends BaseTool {
             }).forEach(file -> {
                 int depth = getRelativeDepth(targetDir, file);
                 String indent = "  ".repeat(depth);
-                structure.append(indent).append(file.getName());
+                structure.append(indent).append(file.getName()).append("\n");
             });
             return structure.toString();
         } catch (Exception e) {
@@ -104,12 +104,20 @@ public class FileDirReadTool extends BaseTool {
     /**
      * 判断是否应该忽略该文件或目录
      *
-     * @param fileName;
+     * @param rootDir;
+     * @param file;
      * @return ;
      */
-    private boolean shouldIgnore(String fileName) {
+    private boolean shouldIgnore(File rootDir, File file) {
+        Path relativePath = rootDir.toPath().relativize(file.toPath());
+        for (Path pathPart : relativePath) {
+            if (IGNORED_NAMES.contains(pathPart.toString())) {
+                return true;
+            }
+        }
+        String fileName = file.getName();
         if (IGNORED_NAMES.contains(fileName)) {
-            return false;
+            return true;
         }
         return IGNORED_EXTENSIONS.stream().anyMatch(fileName::endsWith);
     }

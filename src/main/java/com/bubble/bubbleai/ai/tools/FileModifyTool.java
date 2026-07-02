@@ -29,17 +29,23 @@ public class FileModifyTool extends BaseTool{
                              @P("替换后的新内容") String newContent,
                              @ToolMemoryId Long appId) {
         try {
-            Path path = Paths.get(relativeFilePath);
-            if (!path.isAbsolute()) {
-                String projectDirName = "react_project_" + appId;
-                Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName);
-                path = projectRoot.resolve(relativeFilePath);
+            Path relativePath = Paths.get(relativeFilePath);
+            if (relativePath.isAbsolute()) {
+                return "文件修改失败: 不允许使用绝对路径";
             }
-            if (!Files.exists(path) || Files.isRegularFile(path)) {
+            String projectDirName = "react_project_" + appId;
+            Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName)
+                    .toAbsolutePath()
+                    .normalize();
+            Path path = projectRoot.resolve(relativePath).normalize();
+            if (!path.startsWith(projectRoot)) {
+                return "文件修改失败: 文件路径超出项目目录";
+            }
+            if (!Files.exists(path) || !Files.isRegularFile(path)) {
                 return "错误: 文件不存在或不是文件 - " + relativeFilePath;
             }
             String originalContent = Files.readString(path);
-            if (originalContent.equals(oldContent)) {
+            if (!originalContent.contains(oldContent)) {
                 return "警告: 文件中未找到要替换的内容，文件未修改 - " + relativeFilePath;
             }
             String modifiedContent = originalContent.replace(oldContent, newContent);

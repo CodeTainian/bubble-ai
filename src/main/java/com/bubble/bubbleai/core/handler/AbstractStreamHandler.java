@@ -3,6 +3,8 @@ package com.bubble.bubbleai.core.handler;
 import cn.hutool.core.util.StrUtil;
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.constant.AppConstant;
+import com.bubble.bubbleai.core.builder.BuildResult;
+import com.bubble.bubbleai.core.builder.ReactProjectBuildRepairService;
 import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.exception.SseErrorMessageUtils;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
@@ -27,6 +29,8 @@ public abstract class AbstractStreamHandler implements StreamHandler {
 
     @Resource
     private ReactProjectBuilder reactProjectBuilder;
+    @Resource
+    private ReactProjectBuildRepairService reactProjectBuildRepairService;
 
     @Override
     public Flux<String> handle(StreamHandleContext context) {
@@ -70,18 +74,58 @@ public abstract class AbstractStreamHandler implements StreamHandler {
     private void buildReactProjectAndGenerateCover(StreamHandleContext context) {
         String projectDirName = CodeGenTypeEnum.REACT_PROJECT.getValue() + "_" + context.appId();
         String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + projectDirName;
-        reactProjectBuilder.buildProjectAsync(projectPath)
-                .thenAccept(buildSuccess -> {
-                    if (Boolean.TRUE.equals(buildSuccess)) {
+        reactProjectBuilder.buildProjectWithResultAsync(projectPath)
+                .thenCompose(buildResult -> {
+                    if (buildResult.success()) {
+                        return java.util.concurrent.CompletableFuture.completedFuture(buildResult);
+                    }
+                    saveBuildFailureMessage(context, buildResult);
+                    return reactProjectBuildRepairService.repairAndBuildAsync(
+                            context.appId(),
+                            context.loginUser(),
+                            buildResult
+                    );
+                })
+                .thenAccept(finalBuildResult -> {
+                    if (finalBuildResult.success()) {
                         appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
                     } else {
-                        log.warn("skip generating app cover because React project build failed, appId={}", context.appId());
+                        log.warn("skip generating app cover because React project build failed after repair, appId={}", context.appId());
                     }
                 })
                 .exceptionally(error -> {
                     log.error("build React project before generating app cover failed, appId={}", context.appId(), error);
                     return null;
                 });
+    }
+
+    private void saveBuildFailureMessage(StreamHandleContext context, BuildResult buildResult) {
+        try {
+            chatHistoryService.addChatMessage(
+                    context.appId(),
+                    context.loginUser().getId(),
+                    ChatHistoryMessageTypeEnum.ERROR.getValue(),
+                    "React 项目构建失败，已触发自动修复。\n\n" + formatBuildResult(buildResult),
+                    null
+            );
+        } catch (Exception e) {
+            log.error("save React build failure history failed, appId={}", context.appId(), e);
+        }
+    }
+
+    private String formatBuildResult(BuildResult buildResult) {
+        return String.format("""
+                命令：%s
+                退出码：%d
+                摘要：%s
+                输出：
+                %s
+                """,
+                buildResult.command(),
+                buildResult.exitCode(),
+                buildResult.errorSummary(),
+                buildResult.abbreviatedOutput(3500)
+        );
     }
 
     private void saveErrorMessage(StreamHandleContext context, Throwable error) {

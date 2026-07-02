@@ -22,13 +22,28 @@ public class ReactProjectBuilder {
      * @return 构建结果 Future
      */
     public CompletableFuture<Boolean> buildProjectAsync(String projectPath){
-        CompletableFuture<Boolean> buildFuture = new CompletableFuture<>();
+        return buildProjectWithResultAsync(projectPath).thenApply(BuildResult::success);
+    }
+
+    /**
+     * 异步构建项目并返回完整构建结果。
+     *
+     * @param projectPath 项目路径
+     * @return 构建结果 Future
+     */
+    public CompletableFuture<BuildResult> buildProjectWithResultAsync(String projectPath){
+        CompletableFuture<BuildResult> buildFuture = new CompletableFuture<>();
         Thread.ofVirtual().name("react-builder-"+System.currentTimeMillis()).start(()->{
             try {
-                buildFuture.complete(buildProject(projectPath));
+                buildFuture.complete(buildProjectWithResult(projectPath));
             }catch (Exception e){
                 log.error("异步构建React项目时发生异常: {}",e.getMessage(),e);
-                buildFuture.complete(false);
+                buildFuture.complete(BuildResult.failure(
+                        "build react project",
+                        -1,
+                        "",
+                        "异步构建 React 项目时发生异常: " + e.getMessage()
+                ));
             }
         });
         return buildFuture;
@@ -41,39 +56,56 @@ public class ReactProjectBuilder {
      * @return 是否构建成功
      */
     public boolean buildProject(String projectPath) {
+        return buildProjectWithResult(projectPath).success();
+    }
+
+    /**
+     * 构建 React 项目，并返回可用于诊断和自动修复的结构化结果。
+     *
+     * @param projectPath 项目根目录路径
+     * @return 构建结果
+     */
+    public BuildResult buildProjectWithResult(String projectPath) {
         File projectDir = new File(projectPath);
         if (!projectDir.exists() || !projectDir.isDirectory()) {
             log.error("项目目录不存在: {}", projectPath);
-            return false;
+            return BuildResult.failure("validate project directory", -1, "", "项目目录不存在: " + projectPath);
         }
         // 检查 package.json 是否存在
         File packageJson = new File(projectDir, "package.json");
         if (!packageJson.exists()) {
             log.error("package.json 文件不存在: {}", packageJson.getAbsolutePath());
-            return false;
+            return BuildResult.failure("validate package.json", -1, "", "package.json 文件不存在: " + packageJson.getAbsolutePath());
         }
         if (!ensureViteEntryScript(projectDir)) {
-            return false;
+            return BuildResult.failure("validate vite entry", -1, "", "检查或修复 Vite 入口脚本失败");
         }
         log.info("开始构建 React 项目: {}", projectPath);
         // 执行 npm install
-        if (!executeNpmInstall(projectDir)) {
+        BuildResult installResult = executeNpmInstall(projectDir);
+        if (!installResult.success()) {
             log.error("npm install 执行失败");
-            return false;
+            return installResult;
         }
         // 执行 npm run build
-        if (!executeNpmBuild(projectDir)) {
+        BuildResult buildResult = executeNpmBuild(projectDir);
+        if (!buildResult.success()) {
             log.error("npm run build 执行失败");
-            return false;
+            return buildResult;
         }
         // 验证 dist 目录是否生成
         File distDir = new File(projectDir, "dist");
         if (!distDir.exists()) {
             log.error("构建完成但 dist 目录未生成: {}", distDir.getAbsolutePath());
-            return false;
+            return BuildResult.failure(
+                    "validate dist directory",
+                    -1,
+                    buildResult.output(),
+                    "构建完成但 dist 目录未生成: " + distDir.getAbsolutePath()
+            );
         }
         log.info("React 项目构建成功，dist 目录: {}", distDir.getAbsolutePath());
-        return true;
+        return buildResult;
     }
 
     /**
@@ -112,7 +144,7 @@ public class ReactProjectBuilder {
     /**
      * 执行 npm install 命令
      */
-    private boolean executeNpmInstall(File projectDir) {
+    private BuildResult executeNpmInstall(File projectDir) {
         log.info("执行 npm install...");
         String command = String.format("%s install", buildCommand("npm"));
         return executeCommand(projectDir, command, 300); // 5分钟超时
@@ -121,7 +153,7 @@ public class ReactProjectBuilder {
     /**
      * 执行 npm run build 命令
      */
-    private boolean executeNpmBuild(File projectDir) {
+    private BuildResult executeNpmBuild(File projectDir) {
         log.info("执行 npm run build...");
         String command = String.format("%s run build", buildCommand("npm"));
         return executeCommand(projectDir, command, 180); // 3分钟超时
@@ -146,9 +178,9 @@ public class ReactProjectBuilder {
      * @param workingDir     工作目录
      * @param command        命令字符串
      * @param timeoutSeconds 超时时间（秒）
-     * @return 是否执行成功
+     * @return 命令执行结果
      */
-    private boolean executeCommand(File workingDir, String command, int timeoutSeconds) {
+    private BuildResult executeCommand(File workingDir, String command, int timeoutSeconds) {
         try {
             log.info("在目录 {} 中执行命令: {}", workingDir.getAbsolutePath(), command);
             StringBuilder output = new StringBuilder();
@@ -174,21 +206,21 @@ public class ReactProjectBuilder {
                 process.destroyForcibly();
                 outputReader.join(1000);
                 log.error("命令超时前输出: {}", abbreviateOutput(output.toString()));
-                return false;
+                return BuildResult.failure(command, -2, output.toString(), "命令执行超时（" + timeoutSeconds + "秒）");
             }
             outputReader.join(1000);
             int exitCode = process.exitValue();
             if (exitCode == 0) {
                 log.info("命令执行成功: {}", command);
-                return true;
+                return BuildResult.success(command, output.toString());
             } else {
                 log.error("命令执行失败，退出码: {}", exitCode);
                 log.error("命令输出: {}", abbreviateOutput(output.toString()));
-                return false;
+                return BuildResult.failure(command, exitCode, output.toString(), "命令执行失败，退出码: " + exitCode);
             }
         } catch (Exception e) {
             log.error("执行命令失败: {}, 错误信息: {}", command, e.getMessage());
-            return false;
+            return BuildResult.failure(command, -1, "", "执行命令失败: " + e.getMessage());
         }
     }
 

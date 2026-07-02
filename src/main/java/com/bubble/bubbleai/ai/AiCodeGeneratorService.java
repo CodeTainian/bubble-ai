@@ -58,5 +58,13 @@ public interface AiCodeGeneratorService extends ChatMemoryAccess {
     @SystemMessage(fromResource = "prompt/codegen-react-project-system-prompt.txt")
     TokenStream generateReactProjectCodeStream(@MemoryId long appId, @UserMessage String userMessage);
 
-}
+    /**
+     * 修复已生成的 React 项目代码(流式工具调用)
+     * @param appId;
+     * @param userMessage;
+     * @return 修复过程的流式响应
+     */
+    @SystemMessage(fromResource = "prompt/repair-react-project-system-prompt.txt")
+    TokenStream repairReactProjectCodeStream(@MemoryId long appId, @UserMessage String userMessage);
 
+}
