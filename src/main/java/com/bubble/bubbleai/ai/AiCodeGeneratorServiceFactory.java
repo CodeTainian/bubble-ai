@@ -77,11 +77,12 @@ public class AiCodeGeneratorServiceFactory {
      * 根据appId构建独立的对话记忆
      */
     private AiCodeGeneratorService createAiCodeGeneratorService(long appId,CodeGenTypeEnum codeGenTypeEnum){
+        int maxMessages = CodeGenTypeEnum.REACT_PROJECT.equals(codeGenTypeEnum) ? 120 : 20;
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory
                 .builder()
                 .id(appId)
                 .chatMemoryStore(redisChatMemoryStore)
-                .maxMessages(20)
+                .maxMessages(maxMessages)
                 .build();
         //从数据库中加载历史对话到记忆中
         chatHistoryService.loadChatHistoryToMemory(appId,chatMemory,20);

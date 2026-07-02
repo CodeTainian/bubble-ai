@@ -20,7 +20,6 @@ import static dev.langchain4j.internal.Utils.isNullOrBlank;
 import static dev.langchain4j.internal.Utils.isNullOrEmpty;
 import static dev.langchain4j.model.openai.internal.OpenAiUtils.finishReasonFrom;
 import static dev.langchain4j.model.openai.internal.OpenAiUtils.tokenUsageFrom;
-import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
 
 /**
@@ -187,9 +186,9 @@ public class OpenAiStreamingResponseBuilder {
                     .arguments(toolArgumentsBuilder.toString())
                     .build();
 
-            AiMessage aiMessage = isNullOrBlank(text) ?
-                    AiMessage.from(toolExecutionRequest) :
-                    AiMessage.from(text, singletonList(toolExecutionRequest));
+            // Some OpenAI-compatible providers reject replayed assistant messages
+            // that contain both text content and tool calls.
+            AiMessage aiMessage = AiMessage.from(toolExecutionRequest);
 
             return ChatResponse.builder()
                     .aiMessage(aiMessage)
@@ -206,9 +205,9 @@ public class OpenAiStreamingResponseBuilder {
                             .build())
                     .collect(toList());
 
-            AiMessage aiMessage = isNullOrBlank(text) ?
-                    AiMessage.from(toolExecutionRequests) :
-                    AiMessage.from(text, toolExecutionRequests);
+            // Some OpenAI-compatible providers reject replayed assistant messages
+            // that contain both text content and tool calls.
+            AiMessage aiMessage = AiMessage.from(toolExecutionRequests);
 
             return ChatResponse.builder()
                     .aiMessage(aiMessage)
