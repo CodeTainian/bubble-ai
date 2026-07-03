@@ -17,4 +17,47 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
+    <dependencies>
+        <!-- LangChain4j -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+            <version>1.1.0-beta7</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-reactor</artifactId>
+            <version>1.1.0-beta7</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-redis-spring-boot-starter</artifactId>
+            <version>1.1.0-beta7</version>
+        </dependency>
+        <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>bubble-ai-code-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.example</groupId>
+            <artifactId>bubble-ai-code-model</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <!-- 提供生产就绪的监控基础设施，暴露各种管理和监控端点。它是应用与外部监控系统交互的窗口，但本身不负责指标数据的收集-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- 是真正的指标手机引擎，负责收集JVM、Http、数据库等各种指标数据
+             它提供统一的API让开发者可以创建自定义指标，是整个监控体系的数据生产者；
+             专门负责将Micrometer收集的数据抓换为prometheus的标准格式，创建actuator端点，让prometheus
+             服务器可以直接拉去标准格式
+              -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+    </dependencies>
+
 </project>
