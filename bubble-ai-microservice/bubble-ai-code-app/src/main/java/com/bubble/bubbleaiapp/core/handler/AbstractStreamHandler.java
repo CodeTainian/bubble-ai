@@ -1,0 +1,148 @@
+package com.bubble.bubbleaiapp.core.handler;
+
+import cn.hutool.core.util.StrUtil;
+import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
+import com.bubble.bubbleai.constant.AppConstant;
+import com.bubble.bubbleaiapp.core.builder.BuildResult;
+import com.bubble.bubbleaiapp.core.builder.ReactProjectBuildRepairService;
+import com.bubble.bubbleaiapp.core.builder.ReactProjectBuilder;
+import com.bubble.bubbleai.exception.SseErrorMessageUtils;
+import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
+import com.bubble.bubbleaiapp.service.ChatHistoryService;
+import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Flux;
+
+import java.io.File;
+
+/**
+ * 流式响应处理通用模板。
+ */
+@Slf4j
+@RequiredArgsConstructor
+public abstract class AbstractStreamHandler implements StreamHandler {
+
+    protected final ChatHistoryService chatHistoryService;
+
+    private final AppCoverGenerator appCoverGenerator;
+
+    @Resource
+    private ReactProjectBuilder reactProjectBuilder;
+    @Resource
+    private ReactProjectBuildRepairService reactProjectBuildRepairService;
+
+    @Override
+    public Flux<String> handle(StreamHandleContext context) {
+        StringBuilder aiMessageBuilder = new StringBuilder();
+        return transform(context.originFlux(), aiMessageBuilder)
+                .doOnComplete(() -> saveAiMessageAndGenerateCover(context, aiMessageBuilder))
+                .doOnError(error -> saveErrorMessage(context, error));
+    }
+
+    /**
+     * 将原始流转换为前端可读的文本流，同时按需收集完整 AI 消息。
+     *
+     * @param originFlux       原始 AI 响应流
+     * @param aiMessageBuilder 完整 AI 消息收集器
+     * @return 转换后的响应流
+     */
+    protected abstract Flux<String> transform(Flux<String> originFlux, StringBuilder aiMessageBuilder);
+
+    private void saveAiMessageAndGenerateCover(StreamHandleContext context, StringBuilder aiMessageBuilder) {
+        String aiMessage = aiMessageBuilder.toString();
+        if (StrUtil.isNotBlank(aiMessage)) {
+            try {
+                chatHistoryService.addChatMessage(
+                        context.appId(),
+                        context.loginUser().getId(),
+                        ChatHistoryMessageTypeEnum.AI.getValue(),
+                        aiMessage,
+                        null
+                );
+            } catch (Exception e) {
+                log.error("save AI chat history failed, appId={}", context.appId(), e);
+            }
+        }
+        if (CodeGenTypeEnum.REACT_PROJECT.equals(context.codeGenType())) {
+            buildReactProjectAndGenerateCover(context);
+            return;
+        }
+        appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
+    }
+
+    private void buildReactProjectAndGenerateCover(StreamHandleContext context) {
+        String projectDirName = CodeGenTypeEnum.REACT_PROJECT.getValue() + "_" + context.appId();
+        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + projectDirName;
+        reactProjectBuilder.buildProjectWithResultAsync(projectPath)
+                .thenCompose(buildResult -> {
+                    if (buildResult.success()) {
+                        return java.util.concurrent.CompletableFuture.completedFuture(buildResult);
+                    }
+                    saveBuildFailureMessage(context, buildResult);
+                    return reactProjectBuildRepairService.repairAndBuildAsync(
+                            context.appId(),
+                            context.loginUser(),
+                            buildResult
+                    );
+                })
+                .thenAccept(finalBuildResult -> {
+                    if (finalBuildResult.success()) {
+                        appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
+                    } else {
+                        log.warn("skip generating app cover because React project build failed after repair, appId={}", context.appId());
+                    }
+                })
+                .exceptionally(error -> {
+                    log.error("build React project before generating app cover failed, appId={}", context.appId(), error);
+                    return null;
+                });
+    }
+
+    private void saveBuildFailureMessage(StreamHandleContext context, BuildResult buildResult) {
+        try {
+            chatHistoryService.addChatMessage(
+                    context.appId(),
+                    context.loginUser().getId(),
+                    ChatHistoryMessageTypeEnum.ERROR.getValue(),
+                    "React 项目构建失败，已触发自动修复。\n\n" + formatBuildResult(buildResult),
+                    null
+            );
+        } catch (Exception e) {
+            log.error("save React build failure history failed, appId={}", context.appId(), e);
+        }
+    }
+
+    private String formatBuildResult(BuildResult buildResult) {
+        return String.format("""
+                命令：%s
+                退出码：%d
+                摘要：%s
+                输出：
+                %s
+                """,
+                buildResult.command(),
+                buildResult.exitCode(),
+                buildResult.errorSummary(),
+                buildResult.abbreviatedOutput(3500)
+        );
+    }
+
+    private void saveErrorMessage(StreamHandleContext context, Throwable error) {
+        String errorMessage = SseErrorMessageUtils.resolveMessage(error);
+        if (StrUtil.isBlank(errorMessage)) {
+            errorMessage = error.getClass().getSimpleName();
+        }
+        try {
+            chatHistoryService.addChatMessage(
+                    context.appId(),
+                    context.loginUser().getId(),
+                    ChatHistoryMessageTypeEnum.ERROR.getValue(),
+                    "AI 回复失败：" + errorMessage,
+                    null
+            );
+        } catch (Exception e) {
+            log.error("save AI error chat history failed, appId={}", context.appId(), e);
+        }
+    }
+}

@@ -1,6 +1,8 @@
 spring:
+  profiles:
+    active: local
   application:
-    name: bubble-ai-user
+    name: bubble-ai-app
   # session
   session:
     store-type: redis
@@ -19,10 +21,9 @@ spring:
       port: 6379
       database: 0
       password:
-  profiles:
-    active: local
+      ttl: 3600
 server:
-  port: 8124
+  port: 8125
   servlet:
     context-path: /api
     # 30 days expire
@@ -39,3 +40,10 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+# 分布式定时任务
+app:
+  preview-base-url: ${APP_PREVIEW_BASE_URL:http://localhost:8123/api/static}
+  cleanup:
+    cron: ${APP_CLEANUP_CRON:0 0 3 * * ?}
+    batch-size: ${APP_CLEANUP_BATCH_SIZE:100}
