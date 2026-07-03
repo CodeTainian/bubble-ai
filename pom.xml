@@ -129,8 +129,6 @@
             <version>3.50.0</version>
         </dependency>
 
-
-
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
@@ -142,6 +140,20 @@
             <version>1.44.0</version>
         </dependency>
 
+        <!-- 提供生产就绪的监控基础设施，暴露各种管理和监控端点。它是应用与外部监控系统交互的窗口，但本身不负责指标数据的收集-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- 是真正的指标手机引擎，负责收集JVM、Http、数据库等各种指标数据
+             它提供统一的API让开发者可以创建自定义指标，是整个监控体系的数据生产者；
+             专门负责将Micrometer收集的数据抓换为prometheus的标准格式，创建actuator端点，让prometheus
+             服务器可以直接拉去标准格式
+              -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
 
     </dependencies>
 

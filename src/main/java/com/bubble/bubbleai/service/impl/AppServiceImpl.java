@@ -25,6 +25,8 @@ import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
 import com.bubble.bubbleai.model.vo.AppVO;
 import com.bubble.bubbleai.mapper.AppMapper;
 import com.bubble.bubbleai.model.vo.UserVO;
+import com.bubble.bubbleai.monitor.MonitorContext;
+import com.bubble.bubbleai.monitor.MonitorContextHolder;
 import com.bubble.bubbleai.service.AppService;
 import com.bubble.bubbleai.service.ChatHistoryService;
 import com.bubble.bubbleai.service.UserService;
@@ -166,10 +168,17 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         //5.保存用户消息
         chatHistoryService.addChatMessage(appId, loginUser.getId(),
                 ChatHistoryMessageTypeEnum.USER.getValue(), message, null);
-        //6.调用AI生成代码
+        //6设置监控上下文
+        MonitorContextHolder.setContext(MonitorContext.builder()
+                .userId(loginUser.getId().toString())
+                .appId(appId.toString())
+                .build());
+        //7.调用AI生成代码
         try {
             Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-            Flux<String> handledStream = streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum);
+            Flux<String> handledStream =
+                    streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum).
+                            doFinally(signalType -> {MonitorContextHolder.clearContext();});//流程结束时清理(无论成功与否)
             return generationTaskManager.start(appId, handledStream);
         } catch (RuntimeException error) {
             saveGenerationErrorMessage(appId, loginUser.getId(), error);

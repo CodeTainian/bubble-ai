@@ -1,7 +1,9 @@
 package com.bubble.bubbleai.config;
 
+import com.bubble.bubbleai.monitor.AiModelMonitorListener;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import jakarta.annotation.Resource;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -9,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 
 import java.time.Duration;
+import java.util.List;
 
 @Data
 @Configuration
@@ -31,6 +34,9 @@ public class ReasoningStreamingChatModelConfig {
 
     private boolean logResponses = false;
 
+    @Resource
+    private AiModelMonitorListener aiModelMonitorListener;
+
     /**
      *推理流式模型（用于React 项目生成，带工具调用）
      */
@@ -44,8 +50,9 @@ public class ReasoningStreamingChatModelConfig {
                 .maxTokens(maxTokens)
                 .temperature(temperature)
                 .timeout(timeOut)
-                .logRequests(true)
-                .logResponses(true)
+                .logRequests(logRequests)
+                .logResponses(logResponses)
+                .listeners(List.of(aiModelMonitorListener))
                 .build();
     }
 
