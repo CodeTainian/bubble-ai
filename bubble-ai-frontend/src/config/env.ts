@@ -25,3 +25,9 @@ export const APP_API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_APP_API_B
 export const APP_DEPLOY_BASE_URL = trimTrailingSlash(import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost:8080')
 
 export const APP_PREVIEW_BASE_URL = toSameOriginPreviewBaseUrl(import.meta.env.VITE_APP_PREVIEW_BASE_URL || '/api/static')
+
+export const APP_MONITOR_GRAFANA_URL = trimTrailingSlash(import.meta.env.VITE_APP_MONITOR_GRAFANA_URL || 'http://49.235.165.209:3000')
+
+export const APP_MONITOR_PROMETHEUS_URL = trimTrailingSlash(import.meta.env.VITE_APP_MONITOR_PROMETHEUS_URL || 'http://49.235.165.209:9090')
+
+export const APP_MONITOR_ARMS_URL = trimTrailingSlash(import.meta.env.VITE_APP_MONITOR_ARMS_URL || 'https://arms.console.aliyun.com')

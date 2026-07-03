@@ -72,7 +72,7 @@ const handleMenuClick: MenuProps['onClick'] = (e) => {
   const key = e.key as string
   selectedKeys.value = [key]
   // 跳转到对应页面
-  if (key.startsWith('/')) {
+  if (key.startsWith('/') && router.resolve(key).matched.length > 0) {
     router.push(key)
   }
 }
@@ -125,6 +125,11 @@ const originalItems = [
     key: '/admin/chatHistoryManage',
     label: '对话管理',
     title: '对话管理',
+  },
+  {
+    key: '/admin/projectMonitor',
+    label: '项目监控',
+    title: '项目监控',
   },
   {
     key: '/others',
