@@ -1,0 +1,10 @@
+.git
+.idea
+.mvn
+target
+**/target
+tmp
+**/.DS_Store
+*.log
+.env
+deploy/mysql/data

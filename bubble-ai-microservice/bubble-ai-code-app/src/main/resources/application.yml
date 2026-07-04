@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local
+    active: ${SPRING_PROFILES_ACTIVE:local}
   application:
     name: bubble-ai-app
   # session
@@ -11,19 +11,19 @@ spring:
   # mysql
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/bubble_ai_backend
-    username: root
-    password: rooter
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/bubble_ai_backend?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
   # redis
   data:
     redis:
-      host: localhost
-      port: 6379
-      database: 0
-      password:
-      ttl: 3600
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      ttl: ${SPRING_DATA_REDIS_TTL:3600}
 server:
-  port: 8125
+  port: ${SERVER_PORT:8125}
   servlet:
     context-path: /api
     # 30 days expire
@@ -55,15 +55,15 @@ code:
 # Dubbo
 dubbo:
   registry:
-    address: nacos://127.0.0.1:8848?username=nacos&password=nacos
+    address: ${DUBBO_REGISTRY_ADDRESS:nacos://127.0.0.1:8848?username=nacos&password=nacos}
     register-mode: instance
   protocol:
     name: tri
-    port: 50053
+    port: ${DUBBO_PROTOCOL_PORT:50053}
   consumer:
     timeout: 60000
   provider:
     timeout: 60000
   application:
-    qos-enable: true
-    qos-port: 3333
+    qos-enable: ${DUBBO_APPLICATION_QOS_ENABLE:true}
+    qos-port: ${DUBBO_APPLICATION_QOS_PORT:3333}
