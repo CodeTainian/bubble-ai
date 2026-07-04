@@ -1,0 +1,148 @@
+name: bubble-ai
+
+services:
+  bubble-ai-app:
+    build:
+      context: ..
+      dockerfile: deploy/docker/app.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_BIND_HOST:-127.0.0.1}:8125:8125"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 8125
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -Duser.timezone=${TZ:-Asia/Shanghai}"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-bubble_ai_backend}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-bubble_ai_backend}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_DATABASE: 0
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      DUBBO_REGISTRY_ADDRESS: "nacos://nacos:8848?username=${NACOS_USERNAME:-nacos}&password=${NACOS_PASSWORD:-nacos}"
+      DUBBO_PROTOCOL_PORT: 50053
+      DUBBO_APPLICATION_QOS_ENABLE: "false"
+      APP_PREVIEW_BASE_URL: "${PUBLIC_BASE_URL:-http://49.235.165.209}/api/static"
+      CODE_DEPLOY_HOST: "${PUBLIC_BASE_URL:-http://49.235.165.209}/api/static"
+      AI_CHAT_BASE_URL: ${AI_CHAT_BASE_URL:-https://open.bigmodel.cn/api/paas/v4/}
+      AI_CHAT_API_KEY: ${AI_CHAT_API_KEY}
+      AI_CHAT_MODEL_NAME: ${AI_CHAT_MODEL_NAME:-glm-5.1}
+      AI_CHAT_MAX_TOKENS: ${AI_CHAT_MAX_TOKENS:-8192}
+      AI_STREAMING_BASE_URL: ${AI_STREAMING_BASE_URL:-https://open.bigmodel.cn/api/paas/v4/}
+      AI_STREAMING_API_KEY: ${AI_STREAMING_API_KEY}
+      AI_STREAMING_MODEL_NAME: ${AI_STREAMING_MODEL_NAME:-glm-5.1}
+      AI_STREAMING_MAX_TOKENS: ${AI_STREAMING_MAX_TOKENS:-8192}
+      AI_STREAMING_TIMEOUT: ${AI_STREAMING_TIMEOUT:-600s}
+      AI_REASONING_BASE_URL: ${AI_REASONING_BASE_URL:-https://open.bigmodel.cn/api/paas/v4/}
+      AI_REASONING_API_KEY: ${AI_REASONING_API_KEY}
+      AI_REASONING_MODEL_NAME: ${AI_REASONING_MODEL_NAME:-glm-5.1}
+      AI_REASONING_MAX_TOKENS: ${AI_REASONING_MAX_TOKENS:-32768}
+      AI_REASONING_TEMPERATURE: ${AI_REASONING_TEMPERATURE:-0.1}
+      AI_REASONING_TIMEOUT: ${AI_REASONING_TIMEOUT:-600s}
+      AI_ROUTING_BASE_URL: ${AI_ROUTING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      AI_ROUTING_API_KEY: ${AI_ROUTING_API_KEY}
+      AI_ROUTING_MODEL_NAME: ${AI_ROUTING_MODEL_NAME:-qwen-turbo}
+      AI_ROUTING_MAX_TOKENS: ${AI_ROUTING_MAX_TOKENS:-100}
+      AI_LOG_REQUESTS: ${AI_LOG_REQUESTS:-false}
+      AI_LOG_RESPONSES: ${AI_LOG_RESPONSES:-false}
+      KNIFE4J_BASIC_ENABLE: ${KNIFE4J_BASIC_ENABLE:-true}
+      KNIFE4J_BASIC_USERNAME: ${KNIFE4J_BASIC_USERNAME:-root}
+      KNIFE4J_BASIC_PASSWORD: ${KNIFE4J_BASIC_PASSWORD}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+      bubble-ai-user:
+        condition: service_started
+    volumes:
+      - app_tmp:/app/tmp
+
+  bubble-ai-user:
+    build:
+      context: ..
+      dockerfile: deploy/docker/user.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_BIND_HOST:-127.0.0.1}:8124:8124"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: 8124
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -Duser.timezone=${TZ:-Asia/Shanghai}"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-bubble_ai_backend}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-bubble_ai_backend}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_DATABASE: 0
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      DUBBO_REGISTRY_ADDRESS: "nacos://nacos:8848?username=${NACOS_USERNAME:-nacos}&password=${NACOS_PASSWORD:-nacos}"
+      DUBBO_PROTOCOL_PORT: 50051
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_started
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-bubble_ai_backend}
+      MYSQL_USER: ${MYSQL_USER:-bubble_ai_backend}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+    ports:
+      - "127.0.0.1:8848:8848"
+    volumes:
+      - nacos_data:/home/nacos/data
+      - nacos_logs:/home/nacos/logs
+
+volumes:
+  app_tmp:
+  mysql_data:
+  redis_data:
+  nacos_data:
+  nacos_logs:

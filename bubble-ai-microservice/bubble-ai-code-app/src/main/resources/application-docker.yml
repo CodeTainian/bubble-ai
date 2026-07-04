@@ -1,0 +1,64 @@
+# Docker deployment profile. Secrets should come from Docker Compose .env or server env vars.
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://mysql:3306/bubble_ai_backend?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      ttl: ${SPRING_DATA_REDIS_TTL:3600}
+
+langchain4j:
+  open-ai:
+    chat-model:
+      base-url: ${AI_CHAT_BASE_URL:https://open.bigmodel.cn/api/paas/v4/}
+      api-key: ${AI_CHAT_API_KEY:}
+      model-name: ${AI_CHAT_MODEL_NAME:glm-5.1}
+      max-tokens: ${AI_CHAT_MAX_TOKENS:8192}
+      log-requests: ${AI_LOG_REQUESTS:false}
+      log-responses: ${AI_LOG_RESPONSES:false}
+    streaming-chat-model:
+      base-url: ${AI_STREAMING_BASE_URL:https://open.bigmodel.cn/api/paas/v4/}
+      api-key: ${AI_STREAMING_API_KEY:}
+      model-name: ${AI_STREAMING_MODEL_NAME:glm-5.1}
+      max-tokens: ${AI_STREAMING_MAX_TOKENS:8192}
+      log-requests: ${AI_LOG_REQUESTS:false}
+      log-responses: ${AI_LOG_RESPONSES:false}
+      timeout: ${AI_STREAMING_TIMEOUT:600s}
+    reasoning-streaming-chat-model:
+      base-url: ${AI_REASONING_BASE_URL:https://open.bigmodel.cn/api/paas/v4/}
+      api-key: ${AI_REASONING_API_KEY:}
+      model-name: ${AI_REASONING_MODEL_NAME:glm-5.1}
+      max-tokens: ${AI_REASONING_MAX_TOKENS:32768}
+      temperature: ${AI_REASONING_TEMPERATURE:0.1}
+      log-requests: ${AI_LOG_REQUESTS:false}
+      log-responses: ${AI_LOG_RESPONSES:false}
+      time-out: ${AI_REASONING_TIMEOUT:600s}
+    routing-chat-model:
+      base-url: ${AI_ROUTING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      api-key: ${AI_ROUTING_API_KEY:}
+      model-name: ${AI_ROUTING_MODEL_NAME:qwen-turbo}
+      max-tokens: ${AI_ROUTING_MAX_TOKENS:100}
+      log-requests: ${AI_LOG_REQUESTS:false}
+      log-responses: ${AI_LOG_RESPONSES:false}
+
+mybatis-flex:
+  configuration:
+    log-impl: ''
+
+knife4j:
+  basic:
+    enable: ${KNIFE4J_BASIC_ENABLE:true}
+    username: ${KNIFE4J_BASIC_USERNAME:root}
+    password: ${KNIFE4J_BASIC_PASSWORD:123456}
+
+code:
+  deploy-host: ${CODE_DEPLOY_HOST:http://localhost/api/static}
+
+app:
+  preview-base-url: ${APP_PREVIEW_BASE_URL:http://localhost/api/static}
