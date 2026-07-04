@@ -14,7 +14,7 @@ import com.bubble.bubbleaiapp.service.ChatHistoryService;
 import com.mybatisflex.core.paginate.Page;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.context.annotation.Lazy;
+import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -31,8 +31,7 @@ public class ChatHistoryController {
     @Resource
     private ChatHistoryService chatHistoryService;
 
-    @Resource
-    @Lazy
+    @DubboReference
     private InnerUserService userService;
 
     /**

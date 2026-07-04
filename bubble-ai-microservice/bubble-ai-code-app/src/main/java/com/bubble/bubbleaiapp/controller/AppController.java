@@ -29,7 +29,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -52,10 +51,6 @@ public class AppController {
 
     @Resource
     private AppService appService;
-
-    @Resource
-    @Lazy
-    private InnerUserService userService;
 
     @Resource
     private ProjectDownloadService projectDownloadService;
@@ -176,12 +171,13 @@ public class AppController {
      * 分页查询精选的应用列表
      * @param appQueryRequest 查询请求
      * @return 应用列表
+     * unless 替代 condition的原因: 在方法执行后判断，此时参数已经解析完成;否则缓存拦截器比方法先执行，导致缓存失败
      */
     @PostMapping("/good/list/post/vo")
     @Cacheable(
             value = "good_app_page",
             key = "T(com.bubble.bubbleai.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
-            condition = "#appQueryRequest.pageNum <= 10"
+            unless = "#appQueryRequest.pageNum <= 10"
     )
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);

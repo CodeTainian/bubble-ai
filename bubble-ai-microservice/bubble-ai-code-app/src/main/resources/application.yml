@@ -34,7 +34,7 @@ server:
 springdoc:
   group-configs:
     - group: 'default'
-      packages-to-scan: com.bubble.bubbleai.controller
+      packages-to-scan: com.bubble.bubbleaiapp.controller
 # knife4j
 knife4j:
   enable: true
@@ -43,7 +43,27 @@ knife4j:
 
 # 分布式定时任务
 app:
-  preview-base-url: ${APP_PREVIEW_BASE_URL:http://localhost:8123/api/static}
+  preview-base-url: ${APP_PREVIEW_BASE_URL:http://localhost:8125/api/static}
   cleanup:
     cron: ${APP_CLEANUP_CRON:0 0 3 * * ?}
     batch-size: ${APP_CLEANUP_BATCH_SIZE:100}
+
+code:
+  deploy-host: ${CODE_DEPLOY_HOST:http://localhost:8080/api/static}
+
+
+# Dubbo
+dubbo:
+  registry:
+    address: nacos://127.0.0.1:8848?username=nacos&password=nacos
+    register-mode: instance
+  protocol:
+    name: tri
+    port: 50053
+  consumer:
+    timeout: 60000
+  provider:
+    timeout: 60000
+  application:
+    qos-enable: true
+    qos-port: 3333

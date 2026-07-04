@@ -35,9 +35,9 @@ import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.dubbo.config.annotation.DubboReference;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -55,9 +55,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
-
-    @Resource
-    @Lazy
+    @DubboReference
     private InnerUserService userService;
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
@@ -73,7 +71,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
     @Resource
     private GenerationTaskManager generationTaskManager;
-    @Value("${code.deploy-host:http://localhost}")
+    @Value("${code.deploy-host:http://localhost:8080/api/static}")
     private String deployHost;
 
     @Override
@@ -287,7 +285,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(!updateResult,ErrorCode.OPERATION_ERROR,"更新应用部署信息失败");
         //11.返回可访问的url
        // return AppConstant.CODE_DEPLOY_HOST + File.separator + deployKey;
-        return String.format("%s/%s/",deployHost,deployKey);
+        return String.format("%s/%s/", StrUtil.removeSuffix(deployHost, "/"), deployKey);
 
     }
 

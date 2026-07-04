@@ -6,12 +6,10 @@ import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.innerservice.InnerUserService;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.enums.UserRoleEnum;
-import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -20,10 +18,6 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Aspect
 @Component
 public class AuthInterceptor {
-
-    @Resource
-    @Lazy
-    private InnerUserService userService;
 
     @Around("@annotation(authCheck)")
     public Object doAuthCheck(ProceedingJoinPoint joinPoint, AuthCheck authCheck) throws Throwable {
