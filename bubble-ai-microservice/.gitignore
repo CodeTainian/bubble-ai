@@ -1,4 +1,4 @@
-.env
+.env.examlpe
 *.log
 target/
 tmp/
