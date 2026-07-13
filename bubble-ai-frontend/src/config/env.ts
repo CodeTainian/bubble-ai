@@ -22,7 +22,10 @@ const toSameOriginPreviewBaseUrl = (value: string) => {
 
 export const APP_API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_APP_API_BASE_URL || '/api')
 
-export const APP_DEPLOY_BASE_URL = trimTrailingSlash(import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost:8080/api/static')
+//单体部署
+export const APP_DEPLOY_BASE_URL = trimTrailingSlash(import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost:8080')
+//微服务部署
+// export const APP_DEPLOY_BASE_URL = trimTrailingSlash(import.meta.env.VITE_APP_DEPLOY_BASE_URL || 'http://localhost:8080/api/static')
 
 export const APP_PREVIEW_BASE_URL = toSameOriginPreviewBaseUrl(import.meta.env.VITE_APP_PREVIEW_BASE_URL || '/api/static')
 
