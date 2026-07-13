@@ -191,6 +191,7 @@ type PreviewSnapshot = {
   codeGenType?: string
   historyIndicatesReactProject: boolean
 }
+type GenerationStream = { close: () => void }
 
 hljs.registerLanguage('html', xml)
 hljs.registerLanguage('xml', xml)
@@ -218,7 +219,7 @@ const conversationWidth = ref(520)
 const resizingPane = ref<ResizePane>()
 const visualEditMode = ref(false)
 const selectedVisualElement = ref<VisualEditorElementInfo>()
-let eventSource: EventSource | undefined
+let eventSource: GenerationStream | undefined
 let activeAssistantIndex: number | undefined
 let typewriterTimer: number | undefined
 let typewriterQueue = ''
@@ -695,18 +696,89 @@ const openGenerationStream = (url: string) => {
     appendAssistantChunk(normalizeBusinessErrorChunk((event as MessageEvent).data))
   })
   source.addEventListener('done', () => finishGeneration(source))
-  source.onerror = () => {
-    const hasKnownStreamError = streamInterruptedByBusinessError
-    if (!hasKnownStreamError) {
-      streamInterruptedByBusinessError = true
-      const assistant = getActiveAssistant()
-      if (assistant && !assistant.content && !typewriterQueue) {
-        appendAssistantChunk('连接中断，请稍后再试')
-      }
-    }
-    finishGeneration(source)
-  }
+  source.onerror = () => handleGenerationStreamError(source)
   resumeFollowingOutput()
+}
+const handleGenerationStreamError = (source: GenerationStream, errorMessage = '连接中断，请稍后再试') => {
+  if (eventSource !== source) return
+  const hasKnownStreamError = streamInterruptedByBusinessError
+  if (!hasKnownStreamError) {
+    streamInterruptedByBusinessError = true
+    const assistant = getActiveAssistant()
+    if (assistant && !assistant.content && !typewriterQueue) appendAssistantChunk(errorMessage)
+  }
+  finishGeneration(source)
+}
+const dispatchGenerationSseEvent = (source: GenerationStream, eventName: string, data: string) => {
+  if (eventName === 'done') {
+    finishGeneration(source)
+    return true
+  }
+  if (eventName === 'business-error' || isBusinessErrorChunk(data)) {
+    streamInterruptedByBusinessError = true
+    appendAssistantChunk(normalizeBusinessErrorChunk(data))
+    return false
+  }
+  if (!eventName || eventName === 'message') appendAssistantChunk(normalizeChunk(data))
+  return false
+}
+const consumeGenerationSse = async (stream: ReadableStream<Uint8Array>, source: GenerationStream) => {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (eventSource === source) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value, { stream: !done })
+    let separator = buffer.match(/\r?\n\r?\n/)
+    while (separator?.index !== undefined) {
+      const block = buffer.slice(0, separator.index)
+      buffer = buffer.slice(separator.index + separator[0].length)
+      let eventName = 'message'
+      const dataLines: string[] = []
+      for (const line of block.split(/\r?\n/)) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trimStart()
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''))
+      }
+      if (dispatchGenerationSseEvent(source, eventName, dataLines.join('\n'))) return true
+      separator = buffer.match(/\r?\n\r?\n/)
+    }
+    if (done) return false
+  }
+  return true
+}
+const getHttpErrorMessage = async (response: Response) => {
+  try {
+    const payload = JSON.parse(await response.text()) as { message?: unknown }
+    if (typeof payload.message === 'string' && payload.message.trim()) return payload.message
+  } catch {
+    // 非 JSON 错误响应使用统一提示。
+  }
+  return `生成请求失败（HTTP ${response.status}）`
+}
+const openGenerationPostStream = async (message: string) => {
+  const controller = new AbortController()
+  const source: GenerationStream = { close: () => controller.abort() }
+  eventSource = source
+  resumeFollowingOutput()
+  try {
+    const response = await fetch(`${APP_API_BASE_URL}/app/chat/gen/code`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'text/event-stream',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ appId: id, message }),
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(await getHttpErrorMessage(response))
+    if (!response.body) throw new Error('浏览器未提供流式响应内容')
+    const completed = await consumeGenerationSse(response.body, source)
+    if (!completed) handleGenerationStreamError(source)
+  } catch (error) {
+    if (controller.signal.aborted || eventSource !== source) return
+    handleGenerationStreamError(source, error instanceof Error ? error.message : undefined)
+  }
 }
 const send = (content: string) => {
   if (!content.trim() || generating.value || !canChat.value) return
@@ -734,7 +806,7 @@ const send = (content: string) => {
   previewChecking.value = false
   previewCheckFailed.value = false
   previewRebuilding.value = false
-  openGenerationStream(`${APP_API_BASE_URL}/app/chat/gen/code?appId=${id}&message=${encodeURIComponent(aiMessage)}`)
+  void openGenerationPostStream(aiMessage)
 }
 const normalizeChunk = (chunk: string) => {
   try {
@@ -850,7 +922,7 @@ const flushTypewriterQueue = () => {
   if (typewriterQueue) typewriterTimer = window.setTimeout(flushTypewriterQueue, TYPEWRITER_INTERVAL)
   else if (streamEnded) completeGeneration()
 }
-const finishGeneration = (source: EventSource) => {
+const finishGeneration = (source: GenerationStream) => {
   if (eventSource !== source) return
   source.close()
   eventSource = undefined

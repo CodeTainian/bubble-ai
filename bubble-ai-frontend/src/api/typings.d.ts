@@ -139,9 +139,9 @@ declare namespace API {
     lastCreateTime?: string
   }
 
-  type chatToGenCodeParams = {
-    appId: string
-    message: string
+  type ChatGenerateRequest = {
+    appId?: string
+    message?: string
   }
 
   type getGenerationStatusParams = {
