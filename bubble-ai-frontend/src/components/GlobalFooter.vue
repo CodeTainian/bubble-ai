@@ -3,13 +3,17 @@
     <div class="footer-content">
       <p class="copyright">
         <a
-          href="https://github.com/CodeTainian/bubble-ai"
+          href="https://beian.miit.gov.cn/"
           target="_blank"
           rel="noopener noreferrer"
-          class="author-link"
+          class="footer-link"
         >
-          一站式AI零代码生成解决方案
+          晋ICP备2026009094号-1
         </a>
+        <span class="divider">｜</span>
+        <span>站长：CodeTianian</span>
+        <span class="divider">｜</span>
+        <a class="footer-link" href="mailto:sxtianian@outlook.com">邮箱：sxtianian@outlook.com</a>
       </p>
     </div>
   </a-layout-footer>
@@ -29,8 +33,34 @@
 }
 
 .copyright {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
   margin: 0;
   color: #666;
   font-size: 14px;
+}
+
+.footer-link {
+  color: inherit;
+}
+
+.footer-link:hover {
+  color: #1677ff;
+}
+
+@media (max-width: 640px) {
+  .copyright {
+    line-height: 1.8;
+  }
+
+  .divider {
+    display: none;
+  }
+
+  .copyright > * {
+    flex-basis: 100%;
+  }
 }
 </style>

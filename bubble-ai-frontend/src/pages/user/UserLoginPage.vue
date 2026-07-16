@@ -48,7 +48,7 @@
 
         <div class="auth-tips">
           没有账号？
-          <RouterLink to="/user/register">去注册</RouterLink>
+          <RouterLink :to="registerLocation">去注册</RouterLink>
         </div>
 
         <a-form-item>
@@ -59,7 +59,7 @@
   </div>
 </template>
 <script lang="ts" setup>
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue';
 import { userLogin } from '@/api/userController.ts'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
@@ -76,6 +76,10 @@ const formState = reactive<API.UserLoginRequest>({
 const router = useRouter();
 const route = useRoute();
 const loginUserStore = useLoginUserStore();
+const registerLocation = computed(() => ({
+  path: '/user/register',
+  query: route.query.redirect ? { redirect: route.query.redirect } : {},
+}));
 
 const getRedirectPath = () => {
   const rawRedirect = route.query.redirect

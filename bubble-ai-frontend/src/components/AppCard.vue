@@ -1,6 +1,6 @@
 <template>
   <a-tooltip :title="chatPermissionTip || undefined">
-    <article class="app-card" :class="{ forbidden: !canOpenChat }" @click="openApp">
+    <article class="app-card" :class="{ forbidden: !canOpenApp }" @click="openApp">
       <AppCover :cover="app.cover" :alt="app.appName" placeholder="等待你的下一句灵感">
         <template v-if="app.deployKey" #overlay>
           <a-button type="primary" @click.stop="openDeployedApp"><EyeOutlined /> 查看作品</a-button>
@@ -57,11 +57,21 @@ const router = useRouter()
 const loginUserStore = useLoginUserStore()
 const isOwner = computed(() => Boolean(props.app.userId && loginUserStore.loginUser.id && String(props.app.userId) === String(loginUserStore.loginUser.id)))
 const canOpenChat = computed(() => !props.ownerOnly || isOwner.value)
-const chatPermissionTip = computed(() => props.ownerOnly && !isOwner.value ? '无法在别人的作品下对话哦~' : '')
+const canOpenApp = computed(() => canOpenChat.value || Boolean(props.app.deployKey))
+const chatPermissionTip = computed(() => {
+  if (!props.ownerOnly || isOwner.value) return ''
+  return props.app.deployKey ? '点击查看已发布作品' : '该作品暂未发布'
+})
 const authorInitial = computed(() => (props.app.user?.userName || props.app.user?.userAccount || '我').slice(0, 1))
 const appCodeGenType = computed(() => props.app.codeGenType ? getCodeGenTypeDisplay(props.app.codeGenType) : '')
 const appCodeGenTypeDescription = computed(() => getCodeGenTypeDescription(props.app.codeGenType))
-const openApp = () => canOpenChat.value && props.app.id && router.push(`/app/chat/${props.app.id}`)
+const openApp = () => {
+  if (canOpenChat.value && props.app.id) {
+    router.push(`/app/chat/${props.app.id}`)
+    return
+  }
+  openDeployedApp()
+}
 const openDeployedApp = () => props.app.deployKey && window.open(`${APP_DEPLOY_BASE_URL}/${encodeURIComponent(props.app.deployKey)}/`, '_blank', 'noopener,noreferrer')
 </script>
 

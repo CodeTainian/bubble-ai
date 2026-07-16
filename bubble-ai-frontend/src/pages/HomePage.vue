@@ -29,6 +29,7 @@
     </section>
 
     <AppShowcaseSection
+      v-if="isLoggedIn"
       v-model:search-value="myParams.appName"
       :apps="myApps"
       editable
@@ -66,15 +67,18 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowUpOutlined, BulbOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { addApp, deleteApp, listGoodAppVoByPage, listMyAppByPage } from '@/api/appController'
 import AppShowcaseSection from '@/components/AppShowcaseSection.vue'
+import { useLoginUserStore } from '@/stores/loginUser'
 import { confirmDeleteApp } from '@/utils/app'
 
 const router = useRouter()
+const route = useRoute()
+const loginUserStore = useLoginUserStore()
 const prompt = ref('')
 const creating = ref(false)
 const loadingMine = ref(false)
@@ -84,8 +88,11 @@ const goodApps = ref<API.AppVO[]>([])
 const myTotal = ref(0)
 const goodTotal = ref(0)
 const HOME_SHOWCASE_PAGE_SIZE = 8
+const PENDING_GENERATION_KEY = 'bubble-ai:pending-generation'
+const PENDING_GENERATION_TTL = 30 * 60 * 1000
 const myParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: HOME_SHOWCASE_PAGE_SIZE })
 const goodParams = reactive<API.AppQueryRequest>({ pageNum: 1, pageSize: HOME_SHOWCASE_PAGE_SIZE })
+const isLoggedIn = computed(() => Boolean(loginUserStore.loginUser.id))
 const suggestions = [
   {
     title: '企业官网 · HTML',
@@ -105,13 +112,61 @@ const suggestions = [
   },
 ]
 
+type PendingGeneration = {
+  prompt: string
+  expiresAt: number
+}
+
+const savePendingGeneration = (content: string) => {
+  const pending: PendingGeneration = {
+    prompt: content,
+    expiresAt: Date.now() + PENDING_GENERATION_TTL,
+  }
+  sessionStorage.setItem(PENDING_GENERATION_KEY, JSON.stringify(pending))
+}
+
+const getPendingGeneration = () => {
+  const rawPending = sessionStorage.getItem(PENDING_GENERATION_KEY)
+  if (!rawPending) return null
+  try {
+    const pending = JSON.parse(rawPending) as PendingGeneration
+    if (!pending.prompt?.trim() || pending.expiresAt <= Date.now()) {
+      sessionStorage.removeItem(PENDING_GENERATION_KEY)
+      return null
+    }
+    return pending
+  } catch {
+    sessionStorage.removeItem(PENDING_GENERATION_KEY)
+    return null
+  }
+}
+
+const clearPendingGeneration = (content: string) => {
+  const pending = getPendingGeneration()
+  if (pending?.prompt === content) sessionStorage.removeItem(PENDING_GENERATION_KEY)
+}
+
 const createApp = async () => {
-  if (!prompt.value.trim()) return message.warning('先告诉我你想创建什么')
+  const initPrompt = prompt.value.trim()
+  if (!initPrompt) return message.warning('先告诉我你想创建什么')
+  if (!loginUserStore.initialized) await loginUserStore.fetchLoginUser()
+  if (!isLoggedIn.value) {
+    savePendingGeneration(initPrompt)
+    message.info('登录后将继续为你生成应用')
+    await router.push({
+      path: '/user/login',
+      query: { redirect: '/?resumeGenerate=1' },
+    })
+    return
+  }
   creating.value = true
   try {
-    const res = await addApp({ initPrompt: prompt.value.trim() })
+    const res = await addApp({ initPrompt })
     if (res.data.code === 0 && res.data.data) {
-      await router.push({ path: `/app/chat/${res.data.data}`, query: { auto: '1' } })
+      clearPendingGeneration(initPrompt)
+      const target = { path: `/app/chat/${res.data.data}`, query: { auto: '1' } }
+      if (route.query.resumeGenerate === '1') await router.replace(target)
+      else await router.push(target)
     } else message.error('创建失败：' + res.data.message)
   } finally { creating.value = false }
 }
@@ -154,7 +209,24 @@ const removeMine = (app: API.AppVO) => {
     else message.error('删除失败：' + res.data.message)
   })
 }
-onMounted(() => { fetchMine(); fetchGood() })
+const resumePendingGeneration = async () => {
+  if (route.query.resumeGenerate !== '1' || !isLoggedIn.value) return
+  const pending = getPendingGeneration()
+  if (!pending) {
+    message.warning('待生成内容已失效，请重新输入')
+    await router.replace('/')
+    return
+  }
+  prompt.value = pending.prompt
+  await createApp()
+}
+
+onMounted(async () => {
+  const tasks: Promise<void>[] = [fetchGood()]
+  if (isLoggedIn.value) tasks.push(fetchMine())
+  await Promise.allSettled(tasks)
+  await resumePendingGeneration()
+})
 </script>
 
 <style scoped>

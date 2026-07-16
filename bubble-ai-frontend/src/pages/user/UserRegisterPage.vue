@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue'
 import { userRegister } from '@/api/userController.ts'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import '@/assets/auth.css'
 
@@ -13,6 +13,11 @@ const formState = reactive<API.UserRegisterRequest>({
 })
 
 const router = useRouter()
+const route = useRoute()
+const loginLocation = computed(() => ({
+  path: '/user/login',
+  query: route.query.redirect ? { redirect: route.query.redirect } : {},
+}))
 
 const validatePassword = (_rule: unknown, value: string) => {
   if (value !== formState.userPassword) {
@@ -29,7 +34,7 @@ const handleSubmit = async (values: API.UserRegisterRequest) => {
   const res = await userRegister(values)
   if (res.data.code === 0 && res.data.data) {
     message.success('注册成功，请登录')
-    router.push({ path: '/user/login', replace: true })
+    await router.replace(loginLocation.value)
   } else {
     message.error('注册失败：' + (res.data.message || '未知错误'))
   }
@@ -94,7 +99,7 @@ const handleSubmit = async (values: API.UserRegisterRequest) => {
 
       <div class="auth-tips">
         已有账号？
-        <RouterLink to="/user/login">去登录</RouterLink>
+        <RouterLink :to="loginLocation">去登录</RouterLink>
       </div>
 
       <a-form-item>

@@ -22,6 +22,9 @@ export const useLoginUserStore = defineStore('loginUser', ()=>{
       } else {
         loginUser.value = { userName: '未登录' }
       }
+    } catch {
+      // 游客访问时登录态接口会返回 401，这是正常的未登录状态，不能中断路由启动。
+      loginUser.value = { userName: '未登录' }
     } finally {
       initialized.value = true
     }
