@@ -1,6 +1,7 @@
 package com.bubble.bubbleai.config;
 
 import com.bubble.bubbleai.monitor.AiModelMonitorListener;
+import com.bubble.bubbleai.monitor.ContextPropagatingStreamingChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import jakarta.annotation.Resource;
@@ -37,7 +38,7 @@ public class StreamingChatModelConfig {
     @Bean
     @Scope("prototype")
     public StreamingChatModel streamingChatModelPrototype() {
-        return OpenAiStreamingChatModel.builder()
+        StreamingChatModel model = OpenAiStreamingChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .modelName(modelName)
@@ -47,5 +48,6 @@ public class StreamingChatModelConfig {
                 .logResponses(logResponses)
                 .listeners(List.of(aiModelMonitorListener))
                 .build();
+        return new ContextPropagatingStreamingChatModel(model);
     }
 }

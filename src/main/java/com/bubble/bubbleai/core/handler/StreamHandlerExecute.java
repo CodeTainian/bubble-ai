@@ -16,7 +16,10 @@ public class StreamHandlerExecute {
 
     private final List<StreamHandler> streamHandlers;
 
-    public Flux<String> doExecute(Flux<String> originFlux, long appId, User loginUser, CodeGenTypeEnum codeGenType) {
+    public Flux<String> doExecute(Flux<String> originFlux, long appId, User loginUser,
+                                  CodeGenTypeEnum codeGenType, String generationId,
+                                  String originalUserMessage,
+                                  com.bubble.bubbleai.monitor.MonitorContext monitorContext) {
         StreamHandler streamHandler = streamHandlers.stream()
                 .filter(handler -> handler.supports(codeGenType))
                 .findFirst()
@@ -24,7 +27,8 @@ public class StreamHandlerExecute {
                         ErrorCode.SYSTEM_ERROR,
                         "不支持的流式处理类型：" + (codeGenType == null ? "null" : codeGenType.getValue())
                 ));
-        StreamHandleContext context = new StreamHandleContext(originFlux, appId, loginUser, codeGenType);
+        StreamHandleContext context = new StreamHandleContext(originFlux, appId, loginUser, codeGenType,
+                generationId, originalUserMessage, monitorContext);
         return streamHandler.handle(context);
 
     }

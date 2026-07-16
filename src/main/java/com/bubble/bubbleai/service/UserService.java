@@ -62,6 +62,9 @@ public interface UserService extends IService<User> {
      */
     User getLoginUser(HttpServletRequest request);
 
+    /** Returns null for an absent/expired session without creating a new session. */
+    User getLoginUserPermitNull(HttpServletRequest request);
+
     /**
      * 用户注销
      * @param request session

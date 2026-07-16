@@ -125,20 +125,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
 
     @Override
     public User getLoginUser(HttpServletRequest request) {
-        HttpSession session = request.getSession(false);
-        if (session == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
-        Object userObj = session.getAttribute(USER_LOGIN_STATE);
-        User currentUser = (User) userObj;
-        if (currentUser == null||currentUser.getId() == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
-        }
-        Long userId = currentUser.getId();
-        currentUser= this.getById(userId);
+        User currentUser = getLoginUserPermitNull(request);
         if (currentUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
         }
+        return currentUser;
+    }
+
+    @Override
+    public User getLoginUserPermitNull(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            return null;
+        }
+        Object userObj = session.getAttribute(USER_LOGIN_STATE);
+        if (!(userObj instanceof User currentUser) || currentUser.getId() == null) {
+            return null;
+        }
+        Long userId = currentUser.getId();
+        currentUser= this.getById(userId);
         return currentUser;
     }
 

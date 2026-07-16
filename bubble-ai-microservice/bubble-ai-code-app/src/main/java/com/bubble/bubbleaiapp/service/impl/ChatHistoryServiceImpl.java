@@ -15,6 +15,7 @@ import com.bubble.bubbleai.model.entity.App;
 import com.bubble.bubbleai.model.entity.ChatHistory;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
+import com.bubble.bubbleai.model.enums.ChatMessageSource;
 import com.bubble.bubbleai.model.vo.AppVO;
 import com.bubble.bubbleai.model.vo.ChatHistoryVO;
 import com.bubble.bubbleai.model.vo.UserVO;
@@ -34,6 +35,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 对话历史 服务层实现。
@@ -44,6 +46,9 @@ import java.util.List;
 @Service
 public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatHistory>  implements ChatHistoryService{
 
+    static final String VISUAL_CONTEXT_MARKER =
+            "请优先基于用户在预览页面中选中的元素进行修改。选中元素信息如下：";
+
     @Resource
     private AppMapper appMapper;
 
@@ -52,14 +57,37 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Override
     public ChatHistory addChatMessage(Long appId, Long userId, String messageType, String message, Long parentId) {
+        ChatHistoryMessageTypeEnum type = ChatHistoryMessageTypeEnum.getEnumByValue(messageType);
+        ChatMessageSource source = type == ChatHistoryMessageTypeEnum.USER
+                ? ChatMessageSource.USER_INPUT
+                : type == ChatHistoryMessageTypeEnum.AI
+                ? ChatMessageSource.AI_OUTPUT
+                : ChatMessageSource.SYSTEM;
+        return addChatMessage(appId, userId, messageType, message, message,
+                source, type != ChatHistoryMessageTypeEnum.ERROR, null, parentId);
+    }
+
+    @Override
+    public ChatHistory addChatMessage(Long appId, Long userId, String messageType,
+                                      String displayContent, String modelContent,
+                                      ChatMessageSource source, boolean visibleToUser,
+                                      String metadata, Long parentId) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
         ThrowUtils.throwIf(userId == null || userId <= 0, ErrorCode.PARAMS_ERROR, "用户 ID 不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "消息内容不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(displayContent) && StrUtil.isBlank(modelContent),
+                ErrorCode.PARAMS_ERROR, "消息内容不能为空");
         ChatHistoryMessageTypeEnum messageTypeEnum = ChatHistoryMessageTypeEnum.getEnumByValue(messageType);
         ThrowUtils.throwIf(messageTypeEnum == null, ErrorCode.PARAMS_ERROR, "消息类型错误");
+        ThrowUtils.throwIf(source == null, ErrorCode.PARAMS_ERROR, "消息来源不能为空");
+        String legacyMessage = StrUtil.isNotBlank(displayContent) ? displayContent : "[internal]";
         ChatHistory chatHistory =  ChatHistory.builder()
                 .appId(appId)
-                .message(message)
+                .message(legacyMessage)
+                .displayContent(displayContent)
+                .modelContent(StrUtil.blankToDefault(modelContent, displayContent))
+                .messageSource(source.name())
+                .visibleToUser(visibleToUser && source.isVisibleToUser())
+                .metadata(metadata)
                 .messageType(messageType)
                 .userId(userId)
                 .parentId(parentId)
@@ -71,11 +99,13 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Override
     public ChatHistoryVO getChatHistoryVO(ChatHistory chatHistory) {
-        if (chatHistory == null) {
+        if (!isVisibleToUser(chatHistory)) {
             return null;
         }
         ChatHistoryVO chatHistoryVO = new ChatHistoryVO();
         BeanUtils.copyProperties(chatHistory, chatHistoryVO);
+        chatHistoryVO.setMessage(sanitizeDisplayContent(chatHistory));
+        chatHistoryVO.setVisibleToUser(true);
         Long userId = chatHistory.getUserId();
         if (userId != null) {
             User user = userService.getById(userId);
@@ -111,7 +141,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     }
 
     @Override
-    public Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser) {
+    public Page<ChatHistoryVO> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(pageSize <= 0 || pageSize > 50, ErrorCode.PARAMS_ERROR, "页面大小必须在1-50之间");
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
@@ -127,8 +157,18 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         queryRequest.setAppId(appId);
         queryRequest.setLastCreateTime(lastCreateTime);
         QueryWrapper queryWrapper = this.getQueryWrapper(queryRequest);
+        queryWrapper
+                .and("(visibleToUser = 1 OR visibleToUser IS NULL)")
+                .ne("messageType", ChatHistoryMessageTypeEnum.ERROR.getValue())
+                .and("(messageSource IS NULL OR messageSource IN ('USER_INPUT', 'AI_OUTPUT'))");
         // 查询数据
-        return this.page(Page.of(1, pageSize), queryWrapper);
+        Page<ChatHistory> historyPage = this.page(Page.of(1, pageSize), queryWrapper);
+        Page<ChatHistoryVO> voPage = new Page<>(historyPage.getPageNumber(), historyPage.getPageSize(), historyPage.getTotalRow());
+        voPage.setRecords(historyPage.getRecords().stream()
+                .map(this::getChatHistoryVO)
+                .filter(Objects::nonNull)
+                .toList());
+        return voPage;
     }
 
     @Override
@@ -190,7 +230,10 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                     .orderBy(ChatHistory::getCreateTime,false)
                     .limit(1,maxCount);
             List<ChatHistory> historyList = this.list(queryWrapper);
-            CollUtil.isEmpty(historyList);
+            if (CollUtil.isEmpty(historyList)) {
+                chatMemory.clear();
+                return 0;
+            }
             //反转列表，确保按照时间顺序正序，老的在前面，新的在后
             historyList = historyList.reversed();
             //按时间顺序添加到记忆中
@@ -198,13 +241,18 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
             //清理缓存，防止重复加载
             chatMemory.clear();
             for (ChatHistory chatHistory : historyList) {
+                ChatMessageSource source = parseSource(chatHistory.getMessageSource());
+                if (source != null && source != ChatMessageSource.USER_INPUT && source != ChatMessageSource.AI_OUTPUT) {
+                    continue;
+                }
+                String modelContent = StrUtil.blankToDefault(chatHistory.getModelContent(), chatHistory.getMessage());
                 if (ChatHistoryMessageTypeEnum.USER.getValue().
                         equals(chatHistory.getMessageType())){
-                    chatMemory.add(UserMessage.from(chatHistory.getMessage()));
+                    chatMemory.add(UserMessage.from(modelContent));
                     loadedCount++;
                 }else if (ChatHistoryMessageTypeEnum.AI.getValue().
                         equals(chatHistory.getMessageType())){
-                    chatMemory.add(AiMessage.from(chatHistory.getMessage()));
+                    chatMemory.add(AiMessage.from(modelContent));
                     loadedCount++;
                 }
             }
@@ -215,6 +263,40 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         }
         //加载失败不影响系统运行，没有历史上下文
         return 0;
+    }
+
+    String sanitizeDisplayContent(ChatHistory chatHistory) {
+        String content = StrUtil.blankToDefault(chatHistory.getDisplayContent(), chatHistory.getMessage());
+        if (!ChatHistoryMessageTypeEnum.USER.getValue().equals(chatHistory.getMessageType())) {
+            return content;
+        }
+        int markerIndex = content.indexOf("\n\n" + VISUAL_CONTEXT_MARKER);
+        if (markerIndex < 0) {
+            markerIndex = content.indexOf("\r\n\r\n" + VISUAL_CONTEXT_MARKER);
+        }
+        return markerIndex > 0 ? content.substring(0, markerIndex).trim() : content;
+    }
+
+    boolean isVisibleToUser(ChatHistory chatHistory) {
+        if (chatHistory == null || Boolean.FALSE.equals(chatHistory.getVisibleToUser())) {
+            return false;
+        }
+        if (ChatHistoryMessageTypeEnum.ERROR.getValue().equals(chatHistory.getMessageType())) {
+            return false;
+        }
+        ChatMessageSource source = parseSource(chatHistory.getMessageSource());
+        return source == null || source == ChatMessageSource.USER_INPUT || source == ChatMessageSource.AI_OUTPUT;
+    }
+
+    private ChatMessageSource parseSource(String value) {
+        if (StrUtil.isBlank(value)) {
+            return null;
+        }
+        try {
+            return ChatMessageSource.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
+            return ChatMessageSource.SYSTEM;
+        }
     }
 
     private AppVO getAppVO(App app) {

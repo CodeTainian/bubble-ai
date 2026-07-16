@@ -51,11 +51,14 @@ public interface AppService extends IService<App> {
     /**
      * AI生成的代码与用户的应用绑定
      * @param appId 应用ID
-     * @param message 用户消息
+     * @param displayMessage 用户输入框中的原始消息
+     * @param modelMessage 追加结构化上下文后的模型消息
+     * @param metadata 内部结构化上下文
      * @param loginUser 登录用户
      * @return 流失响应内容
      */
-    Flux<String> chatToGenCode(Long appId, String message, User loginUser);
+    Flux<String> chatToGenCode(Long appId, String displayMessage, String modelMessage,
+                               String metadata, User loginUser);
 
     /**
      * 继续监听正在生成的应用代码

@@ -8,6 +8,8 @@ import com.bubble.bubbleaiapp.core.builder.ReactProjectBuildRepairService;
 import com.bubble.bubbleaiapp.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.exception.SseErrorMessageUtils;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
+import com.bubble.bubbleai.model.enums.ChatMessageSource;
+import com.bubble.bubbleai.model.enums.GenerationState;
 import com.bubble.bubbleaiapp.service.ChatHistoryService;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
@@ -31,13 +33,36 @@ public abstract class AbstractStreamHandler implements StreamHandler {
     private ReactProjectBuilder reactProjectBuilder;
     @Resource
     private ReactProjectBuildRepairService reactProjectBuildRepairService;
+    @Resource
+    private GenerationStateService generationStateService;
 
     @Override
     public Flux<String> handle(StreamHandleContext context) {
-        StringBuilder aiMessageBuilder = new StringBuilder();
-        return transform(context.originFlux(), aiMessageBuilder)
-                .doOnComplete(() -> saveAiMessageAndGenerateCover(context, aiMessageBuilder))
-                .doOnError(error -> saveErrorMessage(context, error));
+        StringBuilder displayMessageBuilder = new StringBuilder();
+        StringBuilder modelMessageBuilder = new StringBuilder();
+        Flux<String> transformed = transform(context.originFlux(), modelMessageBuilder);
+        if (CodeGenTypeEnum.REACT_PROJECT.equals(context.codeGenType())) {
+            return transformed
+                    .concatWith(Flux.defer(() -> buildReactProjectAndGenerateCover(context)))
+                    .doOnNext(displayMessageBuilder::append)
+                    .doOnComplete(() -> saveAiMessage(context, displayMessageBuilder, modelMessageBuilder))
+                    .doOnError(error -> {
+                        saveAiMessage(context, displayMessageBuilder, modelMessageBuilder);
+                        saveErrorMessage(context, error);
+                    });
+        }
+        return transformed
+                .doOnNext(displayMessageBuilder::append)
+                .doOnComplete(() -> {
+                    saveAiMessage(context, displayMessageBuilder, modelMessageBuilder);
+                    generationStateService.transition(context.appId(), context.generationId(),
+                            GenerationState.SUCCESS, 0);
+                    appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
+                })
+                .doOnError(error -> {
+                    saveAiMessage(context, displayMessageBuilder, modelMessageBuilder);
+                    saveErrorMessage(context, error);
+                });
     }
 
     /**
@@ -49,83 +74,56 @@ public abstract class AbstractStreamHandler implements StreamHandler {
      */
     protected abstract Flux<String> transform(Flux<String> originFlux, StringBuilder aiMessageBuilder);
 
-    private void saveAiMessageAndGenerateCover(StreamHandleContext context, StringBuilder aiMessageBuilder) {
-        String aiMessage = aiMessageBuilder.toString();
-        if (StrUtil.isNotBlank(aiMessage)) {
+    private void saveAiMessage(StreamHandleContext context, StringBuilder displayBuilder,
+                               StringBuilder modelBuilder) {
+        String modelMessage = modelBuilder.toString();
+        String displayMessage = StrUtil.blankToDefault(displayBuilder.toString(), modelMessage);
+        if (StrUtil.isNotBlank(displayMessage) || StrUtil.isNotBlank(modelMessage)) {
             try {
-                chatHistoryService.addChatMessage(
-                        context.appId(),
-                        context.loginUser().getId(),
-                        ChatHistoryMessageTypeEnum.AI.getValue(),
-                        aiMessage,
-                        null
-                );
+                chatHistoryService.addChatMessage(context.appId(), context.loginUser().getId(),
+                        ChatHistoryMessageTypeEnum.AI.getValue(), displayMessage,
+                        StrUtil.blankToDefault(modelMessage, displayMessage),
+                        ChatMessageSource.AI_OUTPUT, true, null, null);
             } catch (Exception e) {
                 log.error("save AI chat history failed, appId={}", context.appId(), e);
             }
         }
-        if (CodeGenTypeEnum.REACT_PROJECT.equals(context.codeGenType())) {
-            buildReactProjectAndGenerateCover(context);
-            return;
-        }
-        appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
     }
 
-    private void buildReactProjectAndGenerateCover(StreamHandleContext context) {
-        String projectDirName = CodeGenTypeEnum.REACT_PROJECT.getValue() + "_" + context.appId();
-        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + projectDirName;
-        reactProjectBuilder.buildProjectWithResultAsync(projectPath)
+    private Flux<String> buildReactProjectAndGenerateCover(StreamHandleContext context) {
+        return Flux.create(sink -> {
+            generationStateService.transition(context.appId(), context.generationId(), GenerationState.BUILDING, 0);
+            sink.next("\n\n正在检查项目构建结果\n\n");
+            String projectDirName = CodeGenTypeEnum.REACT_PROJECT.getValue() + "_" + context.appId();
+            String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + projectDirName;
+            reactProjectBuilder.buildProjectWithResultAsync(projectPath)
                 .thenCompose(buildResult -> {
                     if (buildResult.success()) {
+                        generationStateService.transition(context.appId(), context.generationId(), GenerationState.SUCCESS, 0);
+                        sink.next("\n\n项目构建成功\n\n");
                         return java.util.concurrent.CompletableFuture.completedFuture(buildResult);
                     }
-                    saveBuildFailureMessage(context, buildResult);
+                    generationStateService.transition(context.appId(), context.generationId(), GenerationState.BUILD_FAILED, 0);
                     return reactProjectBuildRepairService.repairAndBuildAsync(
-                            context.appId(),
-                            context.loginUser(),
-                            buildResult
-                    );
+                            context.appId(), context.generationId(), context.originalUserMessage(),
+                            context.loginUser(), context.monitorContext(), buildResult, sink::next);
                 })
-                .thenAccept(finalBuildResult -> {
-                    if (finalBuildResult.success()) {
-                        appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
-                    } else {
-                        log.warn("skip generating app cover because React project build failed after repair, appId={}", context.appId());
+                .whenComplete((finalBuildResult, error) -> {
+                    if (error != null) {
+                        log.error("React build/repair pipeline failed, appId={}, generationId={}",
+                                context.appId(), context.generationId(), error);
+                        generationStateService.transition(context.appId(), context.generationId(),
+                                GenerationState.FAILED_MAX_ATTEMPTS, 0);
+                        sink.next("\n\n自动修复未成功，请稍后重试\n\n");
+                        sink.complete();
+                        return;
                     }
-                })
-                .exceptionally(error -> {
-                    log.error("build React project before generating app cover failed, appId={}", context.appId(), error);
-                    return null;
+                    if (finalBuildResult != null && finalBuildResult.success()) {
+                        appCoverGenerator.generateAsync(context.appId(), context.codeGenType());
+                    }
+                    sink.complete();
                 });
-    }
-
-    private void saveBuildFailureMessage(StreamHandleContext context, BuildResult buildResult) {
-        try {
-            chatHistoryService.addChatMessage(
-                    context.appId(),
-                    context.loginUser().getId(),
-                    ChatHistoryMessageTypeEnum.ERROR.getValue(),
-                    "React 项目构建失败，已触发自动修复。\n\n" + formatBuildResult(buildResult),
-                    null
-            );
-        } catch (Exception e) {
-            log.error("save React build failure history failed, appId={}", context.appId(), e);
-        }
-    }
-
-    private String formatBuildResult(BuildResult buildResult) {
-        return String.format("""
-                命令：%s
-                退出码：%d
-                摘要：%s
-                输出：
-                %s
-                """,
-                buildResult.command(),
-                buildResult.exitCode(),
-                buildResult.errorSummary(),
-                buildResult.abbreviatedOutput(3500)
-        );
+        });
     }
 
     private void saveErrorMessage(StreamHandleContext context, Throwable error) {
@@ -134,13 +132,10 @@ public abstract class AbstractStreamHandler implements StreamHandler {
             errorMessage = error.getClass().getSimpleName();
         }
         try {
-            chatHistoryService.addChatMessage(
-                    context.appId(),
-                    context.loginUser().getId(),
+            chatHistoryService.addInternalMessage(context.appId(), context.loginUser().getId(),
                     ChatHistoryMessageTypeEnum.ERROR.getValue(),
-                    "AI 回复失败：" + errorMessage,
-                    null
-            );
+                    "generationId=" + context.generationId() + "\nAI 回复失败：" + errorMessage,
+                    ChatMessageSource.SYSTEM);
         } catch (Exception e) {
             log.error("save AI error chat history failed, appId={}", context.appId(), e);
         }

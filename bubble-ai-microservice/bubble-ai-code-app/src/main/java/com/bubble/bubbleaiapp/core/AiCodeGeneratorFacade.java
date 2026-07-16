@@ -13,11 +13,14 @@ import com.bubble.bubbleaiapp.core.parser.CodeParserExecutor;
 import com.bubble.bubbleaiapp.core.saver.CodeFileSaveExecutor;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
+import com.bubble.bubbleai.monitor.MonitorContext;
+import com.bubble.bubbleai.monitor.MonitorContextHolder;
 import dev.langchain4j.service.TokenStream;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.Disposable;
 
 import java.io.File;
 
@@ -69,6 +72,12 @@ public class AiCodeGeneratorFacade {
      * @return 生成的代码片段
      */
     public Flux<String> generateAndSaveCodeStream(String userMassage,CodeGenTypeEnum codeGenTypeEnum,Long appId) throws BusinessException {
+        return generateAndSaveCodeStream(userMassage, codeGenTypeEnum, appId,
+                MonitorContextHolder.getContext());
+    }
+
+    public Flux<String> generateAndSaveCodeStream(String userMassage, CodeGenTypeEnum codeGenTypeEnum,
+                                                  Long appId, MonitorContext monitorContext) throws BusinessException {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR,"生成类型为空");
         }
@@ -76,15 +85,15 @@ public class AiCodeGeneratorFacade {
         return switch (codeGenTypeEnum){
             case HTML -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMassage);
-                yield processCodeStream(codeStream,CodeGenTypeEnum.HTML,appId);
+                yield propagateMonitorContext(processCodeStream(codeStream,CodeGenTypeEnum.HTML,appId), monitorContext);
             }
             case MULTI_FIlE -> {
                 Flux<String> codeStream = aiCodeGeneratorService.generateMultiFileCodeStream(userMassage);
-                yield processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId);
+                yield propagateMonitorContext(processCodeStream(codeStream,CodeGenTypeEnum.MULTI_FIlE,appId), monitorContext);
             }
             case REACT_PROJECT -> {
                 TokenStream tokenStream = aiCodeGeneratorService.generateReactProjectCodeStream(appId, userMassage);
-                yield processTokenStream(tokenStream);
+                yield processTokenStream(tokenStream, monitorContext);
             }
             default -> {
                 String errorMessage = "不支持的生成类型"+ codeGenTypeEnum.getValue();
@@ -98,7 +107,7 @@ public class AiCodeGeneratorFacade {
      * @param tokenStream;
      * @return Flux<String>
      */
-    private Flux<String> processTokenStream(TokenStream tokenStream) {
+    private Flux<String> processTokenStream(TokenStream tokenStream, MonitorContext monitorContext) {
         return Flux.create(sink->{
             tokenStream.onPartialResponse((String partialResponse)->{
                 AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
@@ -112,9 +121,26 @@ public class AiCodeGeneratorFacade {
             })).onCompleteResponse((ChatResponse)->{
                 sink.complete();
             }).onError((Throwable error)->{
-                error.printStackTrace();
+                log.error("React project AI stream failed", error);
                 sink.error(error);
-            }).start();
+            });
+            try (MonitorContextHolder.Scope ignored = MonitorContextHolder.openScope(monitorContext)) {
+                tokenStream.start();
+            }
+        });
+    }
+
+    private <T> Flux<T> propagateMonitorContext(Flux<T> source, MonitorContext monitorContext) {
+        return Flux.create(sink -> {
+            Disposable subscription;
+            try (MonitorContextHolder.Scope ignored = MonitorContextHolder.openScope(monitorContext)) {
+                subscription = source.subscribe(
+                        value -> MonitorContextHolder.runWithContext(monitorContext, () -> sink.next(value)),
+                        error -> MonitorContextHolder.runWithContext(monitorContext, () -> sink.error(error)),
+                        () -> MonitorContextHolder.runWithContext(monitorContext, sink::complete)
+                );
+            }
+            sink.onDispose(subscription);
         });
     }
 

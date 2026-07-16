@@ -7,6 +7,7 @@ import com.bubble.bubbleai.common.DeleteRequest;
 import com.bubble.bubbleai.common.ResultUtils;
 import com.bubble.bubbleai.constant.AppConstant;
 import com.bubble.bubbleai.constant.UserConstant;
+import com.bubble.bubbleaiapp.core.prompt.VisualContextPromptBuilder;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
 import com.bubble.bubbleai.exception.SseErrorMessageUtils;
@@ -56,6 +57,9 @@ public class AppController {
 
     @Resource
     private ProjectDownloadService projectDownloadService;
+
+    @Resource
+    private VisualContextPromptBuilder visualContextPromptBuilder;
 
     /**
      * 创建应用
@@ -304,10 +308,13 @@ public class AppController {
                 "用户消息不能超过 " + MAX_CHAT_MESSAGE_LENGTH + " 个字符");
         //获取当前登录用户
         User loginUser = InnerUserService.getLoginUser(request);
+        String modelMessage = visualContextPromptBuilder.buildModelContent(
+                message, chatGenerateRequest.getVisualContext());
+        String metadata = visualContextPromptBuilder.buildMetadata(chatGenerateRequest.getVisualContext());
         //调用服务器生成代码(流式)
         Flux<String> contentFlux;
         try {
-            contentFlux = appService.chatToGenCode(appId, message, loginUser);
+            contentFlux = appService.chatToGenCode(appId, message, modelMessage, metadata, loginUser);
         } catch (Throwable error) {
             return Flux.just(buildBusinessErrorEvent(error), buildDoneEvent());
         }

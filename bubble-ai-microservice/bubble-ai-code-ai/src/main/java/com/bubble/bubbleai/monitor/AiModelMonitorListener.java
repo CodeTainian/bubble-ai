@@ -8,7 +8,6 @@ import dev.langchain4j.model.output.TokenUsage;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -16,84 +15,64 @@ import java.util.Map;
 @Component
 @Slf4j
 public class AiModelMonitorListener implements ChatModelListener {
-
-    // 用于存储请求开始时间的键
-    private static final String REQUEST_START_TIME_KEY = "request_start_time";
-    // 用于监控上下文传递（因为请求和响应事件的触发不是同一个线程）
-    private static final String MONITOR_CONTEXT_KEY = "monitor_context";
-    
-    @Resource
-    private AiModelMetricsCollector aiModelMetricsCollector;
+    private static final String START = "request_start_time";
+    private static final String CONTEXT = "monitor_context";
+    @Resource private AiModelMetricsCollector collector;
 
     @Override
-    public void onRequest(ChatModelRequestContext requestContext) {
-        // 记录请求开始时间
-        requestContext.attributes().put(REQUEST_START_TIME_KEY, Instant.now());
-        // 从监控上下文中获取信息
-        MonitorContext context = MonitorContextHolder.getContext();
-        String userId = context.getUserId();
-        String appId = context.getAppId();
-        requestContext.attributes().put(MONITOR_CONTEXT_KEY, context);
-        // 获取模型名称
-        String modelName = requestContext.chatRequest().modelName();
-        // 记录请求指标
-        aiModelMetricsCollector.recordRequest(userId, appId, modelName, "started");
+    public void onRequest(ChatModelRequestContext event) {
+        try {
+            event.attributes().put(START, Instant.now());
+            MonitorContext current = MonitorContextHolder.getContext();
+            MonitorContext context = current == null ? MonitorContext.system() : current.snapshot();
+            event.attributes().put(CONTEXT, context);
+            safe(() -> collector.recordRequest(value(context.getUserId(), "system"),
+                    value(context.getAppId(), "unknown"), value(event.chatRequest().modelName(), "unknown"), "started"));
+        } catch (Exception e) { log.debug("AI request monitoring skipped", e); }
     }
 
     @Override
-    public void onResponse(ChatModelResponseContext responseContext) {
-        // 从属性中获取监控信息（由 onRequest 方法存储）
-        Map<Object, Object> attributes = responseContext.attributes();
-        // 从监控上下文中获取信息
-        MonitorContext context = (MonitorContext) attributes.get(MONITOR_CONTEXT_KEY);
-        String userId = context.getUserId();
-        String appId = context.getAppId();
-        // 获取模型名称
-        String modelName = responseContext.chatResponse().modelName();
-        // 记录成功请求
-        aiModelMetricsCollector.recordRequest(userId, appId, modelName, "success");
-        // 记录响应时间
-        recordResponseTime(attributes, userId, appId, modelName);
-        // 记录 Token 使用情况
-        recordTokenUsage(responseContext, userId, appId, modelName);
+    public void onResponse(ChatModelResponseContext event) {
+        try {
+            MonitorContext context = context(event.attributes());
+            String user = value(context.getUserId(), "system");
+            String app = value(context.getAppId(), "unknown");
+            String model = value(event.chatResponse().modelName(), "unknown");
+            safe(() -> collector.recordRequest(user, app, model, "success"));
+            responseTime(event.attributes(), user, app, model);
+            TokenUsage usage = event.chatResponse().metadata().tokenUsage();
+            if (usage != null) {
+                safe(() -> collector.recordTokenUsage(user, app, model, "input", usage.inputTokenCount()));
+                safe(() -> collector.recordTokenUsage(user, app, model, "output", usage.outputTokenCount()));
+                safe(() -> collector.recordTokenUsage(user, app, model, "total", usage.totalTokenCount()));
+            }
+        } catch (Exception e) { log.debug("AI response monitoring skipped", e); }
     }
 
     @Override
-    public void onError(ChatModelErrorContext errorContext) {
-        // 从监控上下文中获取信息
-        MonitorContext context = MonitorContextHolder.getContext();
-        String userId = context.getUserId();
-        String appId = context.getAppId();
-        // 获取模型名称和错误类型
-        String modelName = errorContext.chatRequest().modelName();
-        String errorMessage = errorContext.error().getMessage();
-        // 记录失败请求
-        aiModelMetricsCollector.recordRequest(userId, appId, modelName, "error");
-        aiModelMetricsCollector.recordError(userId, appId, modelName, errorMessage);
-        // 记录响应时间（即使是错误响应）
-        Map<Object, Object> attributes = errorContext.attributes();
-        recordResponseTime(attributes, userId, appId, modelName);
+    public void onError(ChatModelErrorContext event) {
+        try {
+            MonitorContext context = context(event.attributes());
+            String user = value(context.getUserId(), "system");
+            String app = value(context.getAppId(), "unknown");
+            String model = value(event.chatRequest().modelName(), "unknown");
+            String type = event.error() == null ? "unknown" : event.error().getClass().getSimpleName();
+            safe(() -> collector.recordRequest(user, app, model, "error"));
+            safe(() -> collector.recordError(user, app, model, type));
+            responseTime(event.attributes(), user, app, model);
+        } catch (Exception e) { log.debug("AI error monitoring skipped", e); }
     }
 
-
-    /**
-     * 记录响应时间
-     */
-    private void recordResponseTime(Map<Object, Object> attributes, String userId, String appId, String modelName) {
-        Instant startTime = (Instant) attributes.get(REQUEST_START_TIME_KEY);
-        Duration responseTime = Duration.between(startTime, Instant.now());
-        aiModelMetricsCollector.recordResponseTime(userId, appId, modelName, responseTime);
+    private MonitorContext context(Map<Object, Object> attributes) {
+        Object stored = attributes.get(CONTEXT);
+        if (stored instanceof MonitorContext context) return context;
+        MonitorContext current = MonitorContextHolder.getContext();
+        return current == null ? MonitorContext.system() : current.snapshot();
     }
-
-    /**
-     * 记录Token使用情况
-     */
-    private void recordTokenUsage(ChatModelResponseContext responseContext, String userId, String appId, String modelName) {
-        TokenUsage tokenUsage = responseContext.chatResponse().metadata().tokenUsage();
-        if (tokenUsage != null) {
-            aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "input", tokenUsage.inputTokenCount());
-            aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "output", tokenUsage.outputTokenCount());
-            aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "total", tokenUsage.totalTokenCount());
-        }
+    private void responseTime(Map<Object, Object> attributes, String user, String app, String model) {
+        Object value = attributes.get(START);
+        if (value instanceof Instant start) safe(() -> collector.recordResponseTime(user, app, model, Duration.between(start, Instant.now())));
     }
+    private String value(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
+    private void safe(Runnable action) { try { action.run(); } catch (Exception e) { log.debug("AI metric recording failed", e); } }
 }

@@ -154,9 +154,8 @@ public class JsonMessageStreamHandler extends AbstractStreamHandler {
     /**
      * 处理工具执行完成消息。
      *
-     * <p>工具执行结果通常代表一次真实的代码文件变更或项目读取动作。
-     * 因此生成的展示内容既会推送给前端，也会追加到 {@code streamBuilder}，
-     * 让聊天历史中保留 AI 实际做过哪些工具操作。</p>
+     * <p>工具执行结果按 SSE 原展示格式进入 displayContent，保证刷新前后体验一致；
+     * modelContent 仍只累计普通 AI 文本，不会被工具参数污染。</p>
      */
     private String handleToolExecuted(String chunk, StringBuilder streamBuilder) {
         ToolExecutedMessage toolExecutedMessage = parseMessage(chunk, ToolExecutedMessage.class);
@@ -178,9 +177,9 @@ public class JsonMessageStreamHandler extends AbstractStreamHandler {
             if (StrUtil.isBlank(result)) {
                 return "";
             }
-            String formattedResult = String.format("\n\n%s\n\n", result);
-            streamBuilder.append(formattedResult);
-            return formattedResult;
+            // AbstractStreamHandler records every emitted chunk in
+            // displayContent, while streamBuilder remains model-only.
+            return String.format("\n\n%s\n\n", result);
         } catch (Exception e) {
             log.warn("生成工具执行展示文本失败, toolName={}, argument={}",
                     toolExecutedMessage.getName(), toolExecutedMessage.getArgument(), e);

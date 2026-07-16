@@ -174,7 +174,6 @@ import { useLoginUserStore } from '@/stores/loginUser'
 import { APP_API_BASE_URL, APP_PREVIEW_BASE_URL } from '@/config/env'
 import { getCodeGenTypeDisplay } from '@/utils/app'
 import {
-  buildVisualEditorPrompt,
   createVisualEditorBridge,
   getVisualEditorElementDescription,
   getVisualEditorElementTitle,
@@ -506,15 +505,30 @@ const resolveHistoryRole = (messageType?: string): ChatMessage['role'] => {
 const toChatMessage = (history: API.ChatHistory): ChatMessage => ({
   id: history.id,
   role: resolveHistoryRole(history.messageType),
-  content: history.message || '',
+  content: sanitizeLegacyHistoryContent(history),
   createTime: history.createTime,
 })
+const LEGACY_VISUAL_CONTEXT_MARKER = '请优先基于用户在预览页面中选中的元素进行修改。选中元素信息如下：'
+const sanitizeLegacyHistoryContent = (history: API.ChatHistory) => {
+  const content = history.message || ''
+  if (resolveHistoryRole(history.messageType) !== 'user') return content
+  const markerIndex = content.indexOf(`\n\n${LEGACY_VISUAL_CONTEXT_MARKER}`)
+  return markerIndex > 0 ? content.slice(0, markerIndex).trim() : content
+}
+const isDisplayableHistory = (history: API.ChatHistory) => {
+  if (history.visibleToUser === false) return false
+  const type = (history.messageType || '').toLowerCase()
+  if (type === 'error' || type === 'system' || type === 'tool') return false
+  const source = (history.messageSource || '').toUpperCase()
+  return !['SYSTEM', 'TOOL', 'VISUAL_CONTEXT', 'BUILD_ERROR', 'AUTO_REPAIR'].includes(source)
+}
 const getHistoryTotal = (page?: API.PageChatHistory) => Number(page?.totalRow ?? 0)
 const isReactProjectHistoryContent = (content?: string) =>
   /\[(?:工具调用|选择工具)]\s*写入文件|package\.json|vite\.config\.(?:js|mjs|ts)|src\/main\.jsx/.test(content || '')
 const mergeHistoryMessages = (records: API.ChatHistory[], mode: 'replace' | 'prepend') => {
   if (mode === 'replace') historyIndicatesReactProject.value = false
   const newMessages = sortHistoryAsc(records).reduce<ChatMessage[]>((result, history) => {
+    if (!isDisplayableHistory(history)) return result
     const key = getHistoryKey(history)
     if (loadedHistoryKeys.has(key)) return result
     loadedHistoryKeys.add(key)
@@ -579,11 +593,16 @@ const loadInitialHistory = async () => {
   }
 }
 const resumeActiveGeneration = async () => {
-  if (!canChat.value) return false
+  if (!loginUserStore.initialized || !loginUserStore.loginUser.id || !canChat.value) return false
   try {
     const res = await getGenerationStatus({ appId: id })
     if (res.data.code !== 0 || !res.data.data) return false
-  } catch {
+  } catch (error) {
+    if ((error as { response?: { status?: number } })?.response?.status === 401) {
+      generating.value = false
+      eventSource?.close()
+      eventSource = undefined
+    }
     return false
   }
   eventSource?.close()
@@ -755,7 +774,7 @@ const getHttpErrorMessage = async (response: Response) => {
   }
   return `生成请求失败（HTTP ${response.status}）`
 }
-const openGenerationPostStream = async (message: string) => {
+const openGenerationPostStream = async (message: string, visualContext?: VisualEditorElementInfo) => {
   const controller = new AbortController()
   const source: GenerationStream = { close: () => controller.abort() }
   eventSource = source
@@ -768,7 +787,7 @@ const openGenerationPostStream = async (message: string) => {
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ appId: id, message }),
+      body: JSON.stringify({ appId: id, message, visualContext }),
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(await getHttpErrorMessage(response))
@@ -783,7 +802,7 @@ const openGenerationPostStream = async (message: string) => {
 const send = (content: string) => {
   if (!content.trim() || generating.value || !canChat.value) return
   const userMessage = content.trim()
-  const aiMessage = buildVisualEditorPrompt(userMessage, selectedVisualElement.value)
+  const visualContext = selectedVisualElement.value
   eventSource?.close()
   resetTypewriter()
   messages.value.push({ role: 'user', content: userMessage })
@@ -806,7 +825,7 @@ const send = (content: string) => {
   previewChecking.value = false
   previewCheckFailed.value = false
   previewRebuilding.value = false
-  void openGenerationPostStream(aiMessage)
+  void openGenerationPostStream(userMessage, visualContext)
 }
 const normalizeChunk = (chunk: string) => {
   try {
@@ -1113,14 +1132,27 @@ const deploy = async () => {
 watch(canUseVisualEditor, (canUse) => {
   if (!canUse) resetVisualEditorState()
 })
+watch(() => loginUserStore.loginUser.id, (userId) => {
+  if (userId) return
+  eventSource?.close()
+  eventSource = undefined
+  generating.value = false
+  resetTypewriter()
+})
 
 onMounted(loadApp)
 onActivated(() => {
-  if (generating.value) resumeFollowingOutput()
+  if (generating.value && !eventSource) {
+    openGenerationStream(`${APP_API_BASE_URL}/app/chat/gen/stream?appId=${id}`)
+  } else if (generating.value) {
+    resumeFollowingOutput()
+  }
 })
 onDeactivated(() => {
   previewFullscreen.value = false
   resetVisualEditorState()
+  eventSource?.close()
+  eventSource = undefined
   stopResize()
 })
 onBeforeUnmount(() => {

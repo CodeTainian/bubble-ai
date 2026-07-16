@@ -42,6 +42,35 @@ public class ChatHistory implements Serializable {
     private String message;
 
     /**
+     * Text safe to render in a user-facing chat bubble.
+     */
+    @Column("displayContent")
+    private String displayContent;
+
+    /**
+     * Full content supplied to the model. Never expose it through user history APIs.
+     */
+    @Column("modelContent")
+    private String modelContent;
+
+    /**
+     * USER_INPUT / AI_OUTPUT / BUILD_ERROR / AUTO_REPAIR / ...
+     */
+    @Column("messageSource")
+    private String messageSource;
+
+    /**
+     * Explicit server-side visibility control.
+     */
+    @Column("visibleToUser")
+    private Boolean visibleToUser;
+
+    /**
+     * Structured internal context such as a visual selection. Not returned to users.
+     */
+    private String metadata;
+
+    /**
      * user/ai/error
      */
     @Column("messageType")

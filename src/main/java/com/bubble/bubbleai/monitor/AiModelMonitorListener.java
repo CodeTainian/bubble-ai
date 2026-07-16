@@ -27,52 +27,55 @@ public class AiModelMonitorListener implements ChatModelListener {
 
     @Override
     public void onRequest(ChatModelRequestContext requestContext) {
-        // 记录请求开始时间
-        requestContext.attributes().put(REQUEST_START_TIME_KEY, Instant.now());
-        // 从监控上下文中获取信息
-        MonitorContext context = MonitorContextHolder.getContext();
-        String userId = context.getUserId();
-        String appId = context.getAppId();
-        requestContext.attributes().put(MONITOR_CONTEXT_KEY, context);
-        // 获取模型名称
-        String modelName = requestContext.chatRequest().modelName();
-        // 记录请求指标
-        aiModelMetricsCollector.recordRequest(userId, appId, modelName, "started");
+        try {
+            requestContext.attributes().put(REQUEST_START_TIME_KEY, Instant.now());
+            MonitorContext current = MonitorContextHolder.getContext();
+            MonitorContext context = current == null ? MonitorContext.system() : current.snapshot();
+            requestContext.attributes().put(MONITOR_CONTEXT_KEY, context);
+            String modelName = safeModelName(requestContext.chatRequest().modelName());
+            safeRecord(() -> aiModelMetricsCollector.recordRequest(
+                    metricValue(context.getUserId(), "system"),
+                    metricValue(context.getAppId(), "unknown"),
+                    modelName,
+                    "started"));
+        } catch (Exception e) {
+            log.debug("AI request monitoring was skipped", e);
+        }
     }
 
     @Override
     public void onResponse(ChatModelResponseContext responseContext) {
-        // 从属性中获取监控信息（由 onRequest 方法存储）
-        Map<Object, Object> attributes = responseContext.attributes();
-        // 从监控上下文中获取信息
-        MonitorContext context = (MonitorContext) attributes.get(MONITOR_CONTEXT_KEY);
-        String userId = context.getUserId();
-        String appId = context.getAppId();
-        // 获取模型名称
-        String modelName = responseContext.chatResponse().modelName();
-        // 记录成功请求
-        aiModelMetricsCollector.recordRequest(userId, appId, modelName, "success");
-        // 记录响应时间
-        recordResponseTime(attributes, userId, appId, modelName);
-        // 记录 Token 使用情况
-        recordTokenUsage(responseContext, userId, appId, modelName);
+        try {
+            Map<Object, Object> attributes = responseContext.attributes();
+            MonitorContext context = contextFrom(attributes);
+            String userId = metricValue(context.getUserId(), "system");
+            String appId = metricValue(context.getAppId(), "unknown");
+            String modelName = safeModelName(responseContext.chatResponse().modelName());
+            safeRecord(() -> aiModelMetricsCollector.recordRequest(userId, appId, modelName, "success"));
+            recordResponseTime(attributes, userId, appId, modelName);
+            recordTokenUsage(responseContext, userId, appId, modelName);
+        } catch (Exception e) {
+            log.debug("AI response monitoring was skipped", e);
+        }
     }
 
     @Override
     public void onError(ChatModelErrorContext errorContext) {
-        // 从监控上下文中获取信息
-        MonitorContext context = MonitorContextHolder.getContext();
-        String userId = context.getUserId();
-        String appId = context.getAppId();
-        // 获取模型名称和错误类型
-        String modelName = errorContext.chatRequest().modelName();
-        String errorMessage = errorContext.error().getMessage();
-        // 记录失败请求
-        aiModelMetricsCollector.recordRequest(userId, appId, modelName, "error");
-        aiModelMetricsCollector.recordError(userId, appId, modelName, errorMessage);
-        // 记录响应时间（即使是错误响应）
-        Map<Object, Object> attributes = errorContext.attributes();
-        recordResponseTime(attributes, userId, appId, modelName);
+        try {
+            Map<Object, Object> attributes = errorContext.attributes();
+            MonitorContext context = contextFrom(attributes);
+            String userId = metricValue(context.getUserId(), "system");
+            String appId = metricValue(context.getAppId(), "unknown");
+            String modelName = safeModelName(errorContext.chatRequest().modelName());
+            String errorType = errorContext.error() == null
+                    ? "unknown"
+                    : errorContext.error().getClass().getSimpleName();
+            safeRecord(() -> aiModelMetricsCollector.recordRequest(userId, appId, modelName, "error"));
+            safeRecord(() -> aiModelMetricsCollector.recordError(userId, appId, modelName, errorType));
+            recordResponseTime(attributes, userId, appId, modelName);
+        } catch (Exception e) {
+            log.debug("AI error monitoring was skipped", e);
+        }
     }
 
 
@@ -81,8 +84,11 @@ public class AiModelMonitorListener implements ChatModelListener {
      */
     private void recordResponseTime(Map<Object, Object> attributes, String userId, String appId, String modelName) {
         Instant startTime = (Instant) attributes.get(REQUEST_START_TIME_KEY);
+        if (startTime == null) {
+            return;
+        }
         Duration responseTime = Duration.between(startTime, Instant.now());
-        aiModelMetricsCollector.recordResponseTime(userId, appId, modelName, responseTime);
+        safeRecord(() -> aiModelMetricsCollector.recordResponseTime(userId, appId, modelName, responseTime));
     }
 
     /**
@@ -91,9 +97,34 @@ public class AiModelMonitorListener implements ChatModelListener {
     private void recordTokenUsage(ChatModelResponseContext responseContext, String userId, String appId, String modelName) {
         TokenUsage tokenUsage = responseContext.chatResponse().metadata().tokenUsage();
         if (tokenUsage != null) {
-            aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "input", tokenUsage.inputTokenCount());
-            aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "output", tokenUsage.outputTokenCount());
-            aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "total", tokenUsage.totalTokenCount());
+            safeRecord(() -> aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "input", tokenUsage.inputTokenCount()));
+            safeRecord(() -> aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "output", tokenUsage.outputTokenCount()));
+            safeRecord(() -> aiModelMetricsCollector.recordTokenUsage(userId, appId, modelName, "total", tokenUsage.totalTokenCount()));
+        }
+    }
+
+    private MonitorContext contextFrom(Map<Object, Object> attributes) {
+        Object stored = attributes.get(MONITOR_CONTEXT_KEY);
+        if (stored instanceof MonitorContext context) {
+            return context;
+        }
+        MonitorContext current = MonitorContextHolder.getContext();
+        return current == null ? MonitorContext.system() : current.snapshot();
+    }
+
+    private String metricValue(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value;
+    }
+
+    private String safeModelName(String modelName) {
+        return metricValue(modelName, "unknown");
+    }
+
+    private void safeRecord(Runnable recorder) {
+        try {
+            recorder.run();
+        } catch (Exception e) {
+            log.debug("AI metric recording failed", e);
         }
     }
 }

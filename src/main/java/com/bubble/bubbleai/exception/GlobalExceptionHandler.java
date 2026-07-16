@@ -25,34 +25,48 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public BaseResponse<?> businessExceptionHandler(BusinessException e) {
-        log.error("BusinessException", e);
+    public BaseResponse<?> businessExceptionHandler(BusinessException e,
+                                                     HttpServletRequest request,
+                                                     HttpServletResponse response) {
+        if (e.getCode() == ErrorCode.NOT_LOGIN_ERROR.getCode()) {
+            log.debug("Unauthenticated request, uri={}", request.getRequestURI());
+        } else if (e.getCode() == ErrorCode.NO_AUTH_ERROR.getCode()
+                || e.getCode() == ErrorCode.FORBIDDEN_ERROR.getCode()) {
+            log.warn("Forbidden business request, uri={}, code={}, message={}",
+                    request.getRequestURI(), e.getCode(), e.getMessage());
+        } else {
+            log.warn("Business request failed, uri={}, code={}, message={}",
+                    request.getRequestURI(), e.getCode(), e.getMessage());
+        }
         // 尝试处理 SSE 请求
         if (handleSseError(SseErrorMessageUtils.resolveCode(e), SseErrorMessageUtils.resolveMessage(e))) {
             return null;
         }
+        response.setStatus(resolveHttpStatus(e.getCode()));
         // 对于普通请求，返回标准 JSON 响应
         return ResultUtils.error(e.getCode(), e.getMessage());
     }
 
     @ExceptionHandler(InputGuardrailException.class)
-    public BaseResponse<?> inputGuardrailExceptionHandler(InputGuardrailException e) {
+    public BaseResponse<?> inputGuardrailExceptionHandler(InputGuardrailException e, HttpServletResponse response) {
         log.warn("InputGuardrailException", e);
         int errorCode = SseErrorMessageUtils.resolveCode(e);
         String errorMessage = SseErrorMessageUtils.resolveMessage(e);
         if (handleSseError(errorCode, errorMessage)) {
             return null;
         }
+        response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
         return ResultUtils.error(errorCode, errorMessage);
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public BaseResponse<?> runtimeExceptionHandler(RuntimeException e) {
+    public BaseResponse<?> runtimeExceptionHandler(RuntimeException e, HttpServletResponse response) {
         log.error("RuntimeException", e);
         // 尝试处理 SSE 请求
         if (handleSseError(SseErrorMessageUtils.resolveCode(e), SseErrorMessageUtils.resolveMessage(e))) {
             return null;
         }
+        response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         return ResultUtils.error(ErrorCode.SYSTEM_ERROR, "系统错误");
     }
 
@@ -108,5 +122,26 @@ public class GlobalExceptionHandler {
             }
         }
         return false;
+    }
+
+    private int resolveHttpStatus(int errorCode) {
+        if (errorCode == ErrorCode.NOT_LOGIN_ERROR.getCode()) {
+            return HttpServletResponse.SC_UNAUTHORIZED;
+        }
+        if (errorCode == ErrorCode.NO_AUTH_ERROR.getCode()
+                || errorCode == ErrorCode.FORBIDDEN_ERROR.getCode()) {
+            return HttpServletResponse.SC_FORBIDDEN;
+        }
+        if (errorCode == ErrorCode.NOT_FOUND_ERROR.getCode()) {
+            return HttpServletResponse.SC_NOT_FOUND;
+        }
+        if (errorCode == ErrorCode.TOO_MANY_REQUEST.getCode()) {
+            return 429;
+        }
+        if (errorCode == ErrorCode.SYSTEM_ERROR.getCode()
+                || errorCode == ErrorCode.OPERATION_ERROR.getCode()) {
+            return HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+        }
+        return HttpServletResponse.SC_BAD_REQUEST;
     }
 }

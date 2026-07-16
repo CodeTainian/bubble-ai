@@ -52,6 +52,11 @@ create table chat_history
 (
     id          bigint auto_increment comment 'id' primary key,
     message     text                               not null comment '消息',
+    displayContent text                            null comment '用户界面安全展示内容',
+    modelContent   mediumtext                      null comment '发送给模型的完整内容，不得返回用户界面',
+    messageSource  varchar(32)                     null comment 'USER_INPUT/AI_OUTPUT/SYSTEM/TOOL/BUILD_ERROR/AUTO_REPAIR',
+    visibleToUser  tinyint(1) default 1            not null comment '是否允许通过用户聊天历史接口返回',
+    metadata       text                            null comment '可视化选择等结构化内部上下文',
     messageType varchar(32)                        not null comment 'user/ai',
     appId       bigint                             not null comment '应用id',
     userId      bigint                             not null comment '创建用户id',
@@ -61,7 +66,8 @@ create table chat_history
     isDelete    tinyint  default 0                 not null comment '是否删除',
     INDEX idx_appId (appId),                       -- 提升基于应用的查询性能
     INDEX idx_createTime (createTime),             -- 提升基于时间的查询性能
-    INDEX idx_appId_createTime (appId, createTime) -- 游标查询核心索引
+    INDEX idx_appId_createTime (appId, createTime), -- 游标查询核心索引
+    INDEX idx_app_visible_time (appId, visibleToUser, createTime)
 ) comment '对话历史' collate = utf8mb4_unicode_ci;
 
 

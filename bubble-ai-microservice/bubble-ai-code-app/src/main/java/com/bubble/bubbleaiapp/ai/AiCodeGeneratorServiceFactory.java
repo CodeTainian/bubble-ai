@@ -73,6 +73,24 @@ public class AiCodeGeneratorServiceFactory {
                 key -> createAiCodeGeneratorService(appId,codeGenTypeEnum));
     }
 
+    /** Uncached in-memory service so repair diagnostics never pollute user Redis memory. */
+    public AiCodeGeneratorService createRepairAiCodeGeneratorService(long appId, String generationId) {
+        MessageWindowChatMemory repairMemory = MessageWindowChatMemory.builder()
+                .id(appId + ":repair:" + generationId)
+                .maxMessages(40)
+                .build();
+        StreamingChatModel reasoningStreamingChatModel = reasoningStreamingChatModelProvider.getObject();
+        return AiServices.builder(AiCodeGeneratorService.class)
+                .chatModel(chatModel)
+                .streamingChatModel(reasoningStreamingChatModel)
+                .chatMemoryProvider(memoryId -> repairMemory)
+                .tools((Object[]) toolManager.getAllTools())
+                .hallucinatedToolNameStrategy(toolExecutionRequest ->
+                        ToolExecutionResultMessage.from(toolExecutionRequest,
+                                "Error:there is no tool called" + toolExecutionRequest.name()))
+                .build();
+    }
+
     /**
      * 根据appId构建独立的对话记忆
      */

@@ -4,6 +4,7 @@ import com.bubble.bubbleai.model.dto.chathistory.ChatHistoryQueryRequest;
 import com.mybatisflex.core.service.IService;
 import com.bubble.bubbleai.model.entity.ChatHistory;
 import com.bubble.bubbleai.model.entity.User;
+import com.bubble.bubbleai.model.enums.ChatMessageSource;
 import com.bubble.bubbleai.model.vo.ChatHistoryVO;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -30,6 +31,20 @@ public interface ChatHistoryService extends IService<ChatHistory> {
     ChatHistory addChatMessage(Long appId, Long userId, String messageType, String message, Long parentId);
 
     /**
+     * Persist display/model content separately.
+     */
+    ChatHistory addChatMessage(Long appId, Long userId, String messageType,
+                               String displayContent, String modelContent,
+                               ChatMessageSource source, boolean visibleToUser,
+                               String metadata, Long parentId);
+
+    default ChatHistory addInternalMessage(Long appId, Long userId, String messageType,
+                                           String modelContent, ChatMessageSource source) {
+        return addChatMessage(appId, userId, messageType, null, modelContent,
+                source, false, null, null);
+    }
+
+    /**
      * 获取对话历史视图
      * @param chatHistory 对话历史
      * @return 对话历史视图
@@ -44,9 +59,9 @@ public interface ChatHistoryService extends IService<ChatHistory> {
      * @param loginUser;
      * @return ChatHistory
      */
-    Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize,
-                                               LocalDateTime lastCreateTime,
-                                               User loginUser);
+    Page<ChatHistoryVO> listAppChatHistoryByPage(Long appId, int pageSize,
+                                                 LocalDateTime lastCreateTime,
+                                                 User loginUser);
 
     /**
      * 管理员分页查询所有对话历史

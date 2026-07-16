@@ -116,6 +116,8 @@ declare namespace API {
     id?: string
     message?: string
     messageType?: string
+    messageSource?: string
+    visibleToUser?: boolean
     appId?: string
     userId?: string
     parentId?: string
@@ -142,6 +144,18 @@ declare namespace API {
   type ChatGenerateRequest = {
     appId?: string
     message?: string
+    visualContext?: {
+      tagName?: string
+      selector?: string
+      text?: string
+      attributes?: Record<string, string>
+      rect?: {
+        x?: number
+        y?: number
+        width?: number
+        height?: number
+      }
+    }
   }
 
   type getGenerationStatusParams = {

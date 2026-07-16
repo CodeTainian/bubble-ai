@@ -338,11 +338,6 @@ const INJECTED_VISUAL_EDITOR_SCRIPT = `
 const isVisualEditorMessage = (data: unknown): data is VisualEditorMessage =>
   Boolean(data && typeof data === 'object' && (data as VisualEditorMessage).source === VISUAL_EDITOR_SOURCE)
 
-const formatAttributes = (attributes: Record<string, string>) =>
-  Object.entries(attributes)
-    .map(([key, value]) => `${key}="${value}"`)
-    .join(' ')
-
 export const getVisualEditorElementTitle = (element: VisualEditorElementInfo) => {
   const id = element.attributes.id ? `#${element.attributes.id}` : ''
   const className = element.attributes.class
@@ -355,22 +350,6 @@ export const getVisualEditorElementDescription = (element: VisualEditorElementIn
   const text = element.text ? `文本：${element.text}` : ''
   const selector = `选择器：${element.selector}`
   return [selector, text].filter(Boolean).join('；')
-}
-
-export const buildVisualEditorPrompt = (message: string, element?: VisualEditorElementInfo) => {
-  const userMessage = message.trim()
-  if (!element) return userMessage
-  const attributes = formatAttributes(element.attributes)
-  return [
-    userMessage,
-    '',
-    '请优先基于用户在预览页面中选中的元素进行修改。选中元素信息如下：',
-    `- 标签：${element.tagName}`,
-    `- 选择器：${element.selector}`,
-    element.text ? `- 文本：${element.text}` : '',
-    attributes ? `- 属性：${attributes}` : '',
-    `- 位置尺寸：x=${element.rect.x}, y=${element.rect.y}, width=${element.rect.width}, height=${element.rect.height}`,
-  ].filter(Boolean).join('\n')
 }
 
 export const createVisualEditorBridge = (options: VisualEditorBridgeOptions) => {

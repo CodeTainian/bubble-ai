@@ -23,6 +23,13 @@ public class ChatHistoryVO implements Serializable {
     private String message;
 
     /**
+     * Non-sensitive origin used by the frontend as a second visibility guard.
+     */
+    private String messageSource;
+
+    private Boolean visibleToUser;
+
+    /**
      * 消息类型：user/ai/error
      */
     private String messageType;

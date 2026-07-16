@@ -21,6 +21,12 @@ public class ChatGenerateRequest implements Serializable {
      */
     private String message;
 
+    /**
+     * Optional structured context selected in the visual editor. This field is
+     * never concatenated into the display message persisted for the chat UI.
+     */
+    private VisualEditContext visualContext;
+
     @Serial
     private static final long serialVersionUID = 1L;
 }

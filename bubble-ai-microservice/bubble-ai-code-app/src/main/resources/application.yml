@@ -51,6 +51,16 @@ app:
 code:
   deploy-host: ${CODE_DEPLOY_HOST:http://localhost:8080/api/static}
 
+bubble-ai:
+  generation:
+    react:
+      install-timeout-seconds: ${REACT_INSTALL_TIMEOUT_SECONDS:300}
+      build-timeout-seconds: ${REACT_BUILD_TIMEOUT_SECONDS:180}
+      repair-ai-timeout-seconds: ${REACT_REPAIR_AI_TIMEOUT_SECONDS:240}
+      max-repair-attempts: ${REACT_MAX_REPAIR_ATTEMPTS:3}
+      max-build-log-length: ${REACT_MAX_BUILD_LOG_LENGTH:20000}
+      stop-on-repeated-error: ${REACT_STOP_ON_REPEATED_ERROR:true}
+
 
 # Dubbo
 dubbo:

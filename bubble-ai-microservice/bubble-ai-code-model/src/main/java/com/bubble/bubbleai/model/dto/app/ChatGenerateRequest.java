@@ -21,6 +21,8 @@ public class ChatGenerateRequest implements Serializable {
      */
     private String message;
 
+    private VisualEditContext visualContext;
+
     @Serial
     private static final long serialVersionUID = 1L;
 }

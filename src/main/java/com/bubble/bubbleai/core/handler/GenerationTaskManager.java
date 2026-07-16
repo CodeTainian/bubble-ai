@@ -9,6 +9,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 
 /**
  * Keeps code generation running after the browser SSE connection is closed.
@@ -20,10 +21,27 @@ public class GenerationTaskManager {
     private final ConcurrentMap<Long, GenerationTask> taskMap = new ConcurrentHashMap<>();
 
     public Flux<String> start(Long appId, Flux<String> sourceFlux) {
+        return start(appId, () -> sourceFlux);
+    }
+
+    /**
+     * Atomically creates a task and only invokes the source supplier for the
+     * winning request. Concurrent clicks join the existing task without saving
+     * another user message or starting another model/file-writing stream.
+     */
+    public Flux<String> start(Long appId, Supplier<Flux<String>> sourceSupplier) {
         GenerationTask newTask = new GenerationTask(appId);
         GenerationTask existingTask = taskMap.putIfAbsent(appId, newTask);
         if (existingTask != null) {
             return existingTask.asFlux();
+        }
+        Flux<String> sourceFlux;
+        try {
+            sourceFlux = sourceSupplier.get();
+        } catch (Throwable error) {
+            taskMap.remove(appId, newTask);
+            newTask.emitError(error);
+            return newTask.asFlux();
         }
         sourceFlux
                 .subscribeOn(Schedulers.boundedElastic())

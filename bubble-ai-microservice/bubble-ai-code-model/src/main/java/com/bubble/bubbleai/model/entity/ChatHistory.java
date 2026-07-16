@@ -40,6 +40,20 @@ public class ChatHistory implements Serializable {
      */
     private String message;
 
+    @Column("displayContent")
+    private String displayContent;
+
+    @Column("modelContent")
+    private String modelContent;
+
+    @Column("messageSource")
+    private String messageSource;
+
+    @Column("visibleToUser")
+    private Boolean visibleToUser;
+
+    private String metadata;
+
     /**
      * user/ai/error
      */

@@ -2,6 +2,7 @@ package com.bubble.bubbleaiapp.core.handler;
 
 import com.bubble.bubbleai.ai.model.enums.CodeGenTypeEnum;
 import com.bubble.bubbleai.model.entity.User;
+import com.bubble.bubbleai.monitor.MonitorContext;
 import reactor.core.publisher.Flux;
 
 /**
@@ -16,6 +17,9 @@ public record StreamHandleContext(
         Flux<String> originFlux,
         long appId,
         User loginUser,
-        CodeGenTypeEnum codeGenType
+        CodeGenTypeEnum codeGenType,
+        String generationId,
+        String originalUserMessage,
+        MonitorContext monitorContext
 ) {
 }

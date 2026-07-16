@@ -12,6 +12,8 @@ import com.bubble.bubbleai.core.AiCodeGeneratorFacade;
 import com.bubble.bubbleai.core.builder.ReactProjectBuilder;
 import com.bubble.bubbleai.core.handler.AppCoverGenerator;
 import com.bubble.bubbleai.core.handler.GenerationTaskManager;
+import com.bubble.bubbleai.core.handler.GenerationStateService;
+import com.bubble.bubbleai.core.handler.GenerationTaskLockService;
 import com.bubble.bubbleai.core.handler.StreamHandlerExecute;
 import com.bubble.bubbleai.exception.BusinessException;
 import com.bubble.bubbleai.exception.ErrorCode;
@@ -22,6 +24,8 @@ import com.bubble.bubbleai.model.dto.app.AppQueryRequest;
 import com.bubble.bubbleai.model.entity.App;
 import com.bubble.bubbleai.model.entity.User;
 import com.bubble.bubbleai.model.enums.ChatHistoryMessageTypeEnum;
+import com.bubble.bubbleai.model.enums.ChatMessageSource;
+import com.bubble.bubbleai.model.enums.GenerationState;
 import com.bubble.bubbleai.model.vo.AppVO;
 import com.bubble.bubbleai.mapper.AppMapper;
 import com.bubble.bubbleai.model.vo.UserVO;
@@ -71,6 +75,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
     @Resource
     private GenerationTaskManager generationTaskManager;
+    @Resource
+    private GenerationStateService generationStateService;
+    @Resource
+    private GenerationTaskLockService generationTaskLockService;
     @Value("${code.deploy-host:http://localhost}")
     private String deployHost;
 
@@ -155,35 +163,56 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
-    public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
+    public Flux<String> chatToGenCode(Long appId, String displayMessage, String modelMessage,
+                                      String metadata, User loginUser) {
         //1.参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR,"应用ID不能为空");
-        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(displayMessage), ErrorCode.PARAMS_ERROR,"用户消息不能为空");
+        ThrowUtils.throwIf(StrUtil.isBlank(modelMessage), ErrorCode.PARAMS_ERROR,"模型消息不能为空");
         App app = validateGenerationAccess(appId, loginUser);
         CodeGenTypeEnum codeGenTypeEnum = getCodeGenType(app);
         Optional<Flux<String>> runningFlux = generationTaskManager.getTaskFlux(appId);
         if (runningFlux.isPresent()) {
             return runningFlux.get();
         }
-        //5.保存用户消息
-        chatHistoryService.addChatMessage(appId, loginUser.getId(),
-                ChatHistoryMessageTypeEnum.USER.getValue(), message, null);
-        //6设置监控上下文
-        MonitorContextHolder.setContext(MonitorContext.builder()
-                .userId(loginUser.getId().toString())
-                .appId(appId.toString())
-                .build());
-        //7.调用AI生成代码
-        try {
-            Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
-            Flux<String> handledStream =
-                    streamHandlerExecute.doExecute(codeStream, appId, loginUser, codeGenTypeEnum).
-                            doFinally(signalType -> {MonitorContextHolder.clearContext();});//流程结束时清理(无论成功与否)
-            return generationTaskManager.start(appId, handledStream);
-        } catch (RuntimeException error) {
-            saveGenerationErrorMessage(appId, loginUser.getId(), error);
-            throw error;
-        }
+        // start(Supplier) closes the race between the status check above and
+        // registration. Only the winning request persists history and invokes AI.
+        return generationTaskManager.start(appId, () -> {
+            String generationId = UUID.randomUUID().toString();
+            String taskLockToken = generationTaskLockService.tryAcquire(appId, generationId)
+                    .orElseThrow(() -> new BusinessException(
+                            ErrorCode.OPERATION_ERROR, "该应用已有生成任务正在运行"));
+            try {
+                chatHistoryService.addChatMessage(
+                        appId, loginUser.getId(), ChatHistoryMessageTypeEnum.USER.getValue(),
+                        displayMessage, modelMessage, ChatMessageSource.USER_INPUT,
+                        true, metadata, null);
+                generationStateService.transition(appId, generationId, GenerationState.GENERATING, 0);
+                MonitorContext monitorContext = MonitorContext.builder()
+                        .userId(loginUser.getId().toString())
+                        .appId(appId.toString())
+                        .generationId(generationId)
+                        .requestId(UUID.randomUUID().toString())
+                        .actorType("USER")
+                        .build();
+                Flux<String> handledStream;
+                try (MonitorContextHolder.Scope ignored = MonitorContextHolder.openScope(monitorContext)) {
+                    Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(
+                            modelMessage, codeGenTypeEnum, appId, monitorContext);
+                    handledStream = streamHandlerExecute.doExecute(
+                            codeStream, appId, loginUser, codeGenTypeEnum,
+                            generationId, displayMessage, monitorContext);
+                }
+                return handledStream.doFinally(signalType ->
+                        generationTaskLockService.release(appId, taskLockToken));
+            } catch (RuntimeException error) {
+                generationTaskLockService.release(appId, taskLockToken);
+                saveGenerationErrorMessage(appId, loginUser.getId(), generationId, error);
+                generationStateService.transition(appId, generationId,
+                        GenerationState.FAILED_MAX_ATTEMPTS, 0);
+                throw error;
+            }
+        });
 
     }
 
@@ -219,14 +248,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return codeGenTypeEnum;
     }
 
-    private void saveGenerationErrorMessage(Long appId, Long userId, Throwable error) {
+    private void saveGenerationErrorMessage(Long appId, Long userId, String generationId, Throwable error) {
         try {
-            chatHistoryService.addChatMessage(
+            chatHistoryService.addInternalMessage(
                     appId,
                     userId,
                     ChatHistoryMessageTypeEnum.ERROR.getValue(),
-                    "AI 回复失败：" + SseErrorMessageUtils.resolveMessage(error),
-                    null
+                    "generationId=" + generationId + "\nAI 回复失败：" + SseErrorMessageUtils.resolveMessage(error),
+                    ChatMessageSource.SYSTEM
             );
         } catch (Exception e) {
             log.error("save sync AI error chat history failed, appId={}", appId, e);

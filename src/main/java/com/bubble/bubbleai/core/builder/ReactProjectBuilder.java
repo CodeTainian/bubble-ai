@@ -1,125 +1,100 @@
 package com.bubble.bubbleai.core.builder;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class ReactProjectBuilder {
 
-    /**
-     * 异步构建项目（不阻塞主流程）
-     * @param projectPath 项目路径
-     * @return 构建结果 Future
-     */
-    public CompletableFuture<Boolean> buildProjectAsync(String projectPath){
+    private final ReactGenerationProperties properties;
+    private final BuildLogSanitizer buildLogSanitizer;
+
+    public CompletableFuture<Boolean> buildProjectAsync(String projectPath) {
         return buildProjectWithResultAsync(projectPath).thenApply(BuildResult::success);
     }
 
-    /**
-     * 异步构建项目并返回完整构建结果。
-     *
-     * @param projectPath 项目路径
-     * @return 构建结果 Future
-     */
-    public CompletableFuture<BuildResult> buildProjectWithResultAsync(String projectPath){
-        CompletableFuture<BuildResult> buildFuture = new CompletableFuture<>();
-        Thread.ofVirtual().name("react-builder-"+System.currentTimeMillis()).start(()->{
+    public CompletableFuture<BuildResult> buildProjectWithResultAsync(String projectPath) {
+        CompletableFuture<BuildResult> future = new CompletableFuture<>();
+        Thread.ofVirtual().name("react-builder-" + System.currentTimeMillis()).start(() -> {
             try {
-                buildFuture.complete(buildProjectWithResult(projectPath));
-            }catch (Exception e){
-                log.error("异步构建React项目时发生异常: {}",e.getMessage(),e);
-                buildFuture.complete(BuildResult.failure(
-                        "build react project",
-                        -1,
-                        "",
-                        "异步构建 React 项目时发生异常: " + e.getMessage()
-                ));
+                future.complete(buildProjectWithResult(projectPath));
+            } catch (Exception e) {
+                log.error("React build task failed", e);
+                future.complete(BuildResult.failure(
+                        "build", "build react project", -1, "", "",
+                        "React 项目构建任务异常", 0, false));
             }
         });
-        return buildFuture;
+        return future;
     }
 
-    /**
-     * 构建 React 项目
-     *
-     * @param projectPath 项目根目录路径
-     * @return 是否构建成功
-     */
     public boolean buildProject(String projectPath) {
         return buildProjectWithResult(projectPath).success();
     }
 
-    /**
-     * 构建 React 项目，并返回可用于诊断和自动修复的结构化结果。
-     *
-     * @param projectPath 项目根目录路径
-     * @return 构建结果
-     */
     public BuildResult buildProjectWithResult(String projectPath) {
         File projectDir = new File(projectPath);
-        if (!projectDir.exists() || !projectDir.isDirectory()) {
-            log.error("项目目录不存在: {}", projectPath);
-            return BuildResult.failure("validate project directory", -1, "", "项目目录不存在: " + projectPath);
+        if (!projectDir.isDirectory()) {
+            return validationFailure("validate project directory", "项目目录不存在");
         }
-        // 检查 package.json 是否存在
-        File packageJson = new File(projectDir, "package.json");
-        if (!packageJson.exists()) {
-            log.error("package.json 文件不存在: {}", packageJson.getAbsolutePath());
-            return BuildResult.failure("validate package.json", -1, "", "package.json 文件不存在: " + packageJson.getAbsolutePath());
+        if (!new File(projectDir, "package.json").isFile()) {
+            return validationFailure("validate package.json", "package.json 文件不存在");
         }
         if (!ensureViteEntryScript(projectDir)) {
-            return BuildResult.failure("validate vite entry", -1, "", "检查或修复 Vite 入口脚本失败");
+            return validationFailure("validate vite entry", "检查或修复 Vite 入口脚本失败");
         }
-        log.info("开始构建 React 项目: {}", projectPath);
-        // 执行 npm install
-        BuildResult installResult = executeNpmInstall(projectDir);
+
+        BuildResult installResult = executeCommand(
+                projectDir,
+                "npm_install",
+                List.of(npmCommand(), "install"),
+                properties.getInstallTimeoutSeconds());
         if (!installResult.success()) {
-            log.error("npm install 执行失败");
             return installResult;
         }
-        // 执行 npm run build
-        BuildResult buildResult = executeNpmBuild(projectDir);
+
+        BuildResult buildResult = executeCommand(
+                projectDir,
+                "npm_build",
+                List.of(npmCommand(), "run", "build"),
+                properties.getBuildTimeoutSeconds());
         if (!buildResult.success()) {
-            log.error("npm run build 执行失败");
             return buildResult;
         }
-        // 验证 dist 目录是否生成
-        File distDir = new File(projectDir, "dist");
-        if (!distDir.exists()) {
-            log.error("构建完成但 dist 目录未生成: {}", distDir.getAbsolutePath());
+
+        if (!new File(projectDir, "dist").isDirectory()) {
             return BuildResult.failure(
-                    "validate dist directory",
-                    -1,
-                    buildResult.output(),
-                    "构建完成但 dist 目录未生成: " + distDir.getAbsolutePath()
-            );
+                    "validate_dist", "validate dist directory", -1,
+                    buildResult.stdout(), buildResult.stderr(),
+                    "构建命令成功，但未生成 dist 目录", buildResult.durationMillis(), false);
         }
-        log.info("React 项目构建成功，dist 目录: {}", distDir.getAbsolutePath());
         return buildResult;
     }
 
-    /**
-     * Vite 的入口脚本必须写在 index.html 中。若模型漏写，build 会成功但 dist/index.html 只有空 root。
-     */
+    private BuildResult validationFailure(String command, String summary) {
+        return BuildResult.failure("validation", command, -1, "", "", summary, 0, false);
+    }
+
+    /** Vite needs an explicit module entry even if the generated HTML omitted it. */
     private boolean ensureViteEntryScript(File projectDir) {
         File indexHtml = new File(projectDir, "index.html");
-        if (!indexHtml.exists()) {
-            log.error("index.html 文件不存在: {}", indexHtml.getAbsolutePath());
-            return false;
-        }
         File mainJsx = new File(projectDir, "src/main.jsx");
-        if (!mainJsx.exists()) {
-            log.error("src/main.jsx 文件不存在: {}", mainJsx.getAbsolutePath());
+        if (!indexHtml.isFile() || !mainJsx.isFile()) {
             return false;
         }
         try {
@@ -129,107 +104,157 @@ public class ReactProjectBuilder {
                 return true;
             }
             String entryScript = "    <script type=\"module\" src=\"/src/main.jsx\"></script>\n";
-            String updatedHtml = html.contains("</body>")
+            String updated = html.contains("</body>")
                     ? html.replace("</body>", entryScript + "  </body>")
                     : html + "\n" + entryScript;
-            Files.writeString(indexPath, updatedHtml, StandardCharsets.UTF_8);
-            log.warn("index.html 缺少 Vite 入口脚本，已自动补充: {}", indexHtml.getAbsolutePath());
+            Files.writeString(indexPath, updated, StandardCharsets.UTF_8);
+            log.warn("Vite entry was missing and has been restored, project={}", projectDir.getName());
             return true;
         } catch (Exception e) {
-            log.error("检查或修复 index.html 入口脚本失败: {}", e.getMessage(), e);
+            log.error("Failed to validate Vite entry, project={}", projectDir.getName(), e);
             return false;
         }
     }
 
-    /**
-     * 执行 npm install 命令
-     */
-    private BuildResult executeNpmInstall(File projectDir) {
-        log.info("执行 npm install...");
-        String command = String.format("%s install", buildCommand("npm"));
-        return executeCommand(projectDir, command, 300); // 5分钟超时
-    }
-
-    /**
-     * 执行 npm run build 命令
-     */
-    private BuildResult executeNpmBuild(File projectDir) {
-        log.info("执行 npm run build...");
-        String command = String.format("%s run build", buildCommand("npm"));
-        return executeCommand(projectDir, command, 180); // 3分钟超时
-    }
-
-
-    private boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("windows");
-    }
-
-    private String buildCommand(String baseCommand) {
-        if (isWindows()) {
-            return baseCommand + ".cmd";
-        }
-        return baseCommand;
-    }
-
-
-    /**
-     * 执行命令
-     *
-     * @param workingDir     工作目录
-     * @param command        命令字符串
-     * @param timeoutSeconds 超时时间（秒）
-     * @return 命令执行结果
-     */
-    private BuildResult executeCommand(File workingDir, String command, int timeoutSeconds) {
+    private BuildResult executeCommand(File workingDir, String stage,
+                                       List<String> commandParts, int timeoutSeconds) {
+        long startedAt = System.nanoTime();
+        String command = String.join(" ", commandParts);
+        int perStreamLimit = Math.max(2000, properties.getMaxBuildLogLength() / 2);
+        BoundedLogBuffer stdout = new BoundedLogBuffer(perStreamLimit);
+        BoundedLogBuffer stderr = new BoundedLogBuffer(perStreamLimit);
+        Process process = null;
         try {
-            log.info("在目录 {} 中执行命令: {}", workingDir.getAbsolutePath(), command);
-            StringBuilder output = new StringBuilder();
-            Process process = new ProcessBuilder(command.split("\\s+"))
+            process = new ProcessBuilder(commandParts)
                     .directory(workingDir)
-                    .redirectErrorStream(true)
                     .start();
-            Thread outputReader = Thread.ofVirtual().name("react-build-output-" + System.currentTimeMillis()).start(() -> {
-                try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        output.append(line).append(System.lineSeparator());
-                    }
-                } catch (Exception e) {
-                    log.warn("读取命令输出失败: {}", e.getMessage());
-                }
-            });
-            // 等待进程完成，设置超时
-            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            Process runningProcess = process;
+            Thread stdoutReader = Thread.ofVirtual().name("react-build-stdout").start(
+                    () -> readStream(runningProcess.getInputStream(), stdout));
+            Thread stderrReader = Thread.ofVirtual().name("react-build-stderr").start(
+                    () -> readStream(runningProcess.getErrorStream(), stderr));
+
+            boolean finished = process.waitFor(Math.max(1, timeoutSeconds), TimeUnit.SECONDS);
             if (!finished) {
-                log.error("命令执行超时（{}秒），强制终止进程", timeoutSeconds);
-                process.destroyForcibly();
-                outputReader.join(1000);
-                log.error("命令超时前输出: {}", abbreviateOutput(output.toString()));
-                return BuildResult.failure(command, -2, output.toString(), "命令执行超时（" + timeoutSeconds + "秒）");
+                destroyProcessTree(process);
             }
-            outputReader.join(1000);
+            stdoutReader.join(2000);
+            stderrReader.join(2000);
+            long durationMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+            if (!finished) {
+                BuildResult result = BuildResult.failure(
+                        stage, command, -2, stdout.value(), stderr.value(),
+                        command + " 执行超时（" + timeoutSeconds + " 秒）",
+                        durationMillis, true);
+                logFailure(workingDir, result);
+                return result;
+            }
             int exitCode = process.exitValue();
             if (exitCode == 0) {
-                log.info("命令执行成功: {}", command);
-                return BuildResult.success(command, output.toString());
-            } else {
-                log.error("命令执行失败，退出码: {}", exitCode);
-                log.error("命令输出: {}", abbreviateOutput(output.toString()));
-                return BuildResult.failure(command, exitCode, output.toString(), "命令执行失败，退出码: " + exitCode);
+                return BuildResult.success(stage, command, stdout.value(), stderr.value(), durationMillis);
+            }
+            BuildResult result = BuildResult.failure(
+                    stage, command, exitCode, stdout.value(), stderr.value(),
+                    command + " 执行失败，退出码 " + exitCode,
+                    durationMillis, false);
+            logFailure(workingDir, result);
+            return result;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (process != null) {
+                destroyProcessTree(process);
+            }
+            return BuildResult.failure(stage, command, -3, stdout.value(), stderr.value(),
+                    "构建任务被取消", elapsedMillis(startedAt), false);
+        } catch (Exception e) {
+            if (process != null && process.isAlive()) {
+                destroyProcessTree(process);
+            }
+            log.error("Failed to execute React build command, stage={}", stage, e);
+            return BuildResult.failure(stage, command, -1, stdout.value(), stderr.value(),
+                    "无法执行构建命令", elapsedMillis(startedAt), false);
+        }
+    }
+
+    private void readStream(InputStream stream, BoundedLogBuffer target) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                target.append(line + System.lineSeparator());
             }
         } catch (Exception e) {
-            log.error("执行命令失败: {}, 错误信息: {}", command, e.getMessage());
-            return BuildResult.failure(command, -1, "", "执行命令失败: " + e.getMessage());
+            target.append("[读取命令输出失败: " + e.getClass().getSimpleName() + "]\n");
         }
     }
 
-    private String abbreviateOutput(String output) {
-        if (output == null || output.isBlank()) {
-            return "无输出";
+    private void destroyProcessTree(Process process) {
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
+        try {
+            process.waitFor(2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
-        int maxLength = 6000;
-        return output.length() <= maxLength ? output : output.substring(output.length() - maxLength);
     }
 
+    private void logFailure(File workingDir, BuildResult result) {
+        String safeOutput = buildLogSanitizer.sanitize(
+                result.abbreviatedOutput(6000), workingDir.getAbsolutePath(), 6000);
+        log.warn("React build failed, project={}, stage={}, exitCode={}, timedOut={}, durationMs={}, output={}",
+                workingDir.getName(), result.stage(), result.exitCode(), result.timedOut(),
+                result.durationMillis(), safeOutput);
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+    }
+
+    private String npmCommand() {
+        return System.getProperty("os.name").toLowerCase().contains("windows") ? "npm.cmd" : "npm";
+    }
+
+    private static final class BoundedLogBuffer {
+        private final int maxLength;
+        private final int headLimit;
+        private final int tailLimit;
+        private final StringBuilder head = new StringBuilder();
+        private final ArrayDeque<String> tail = new ArrayDeque<>();
+        private int tailLength;
+        private long totalLength;
+
+        private BoundedLogBuffer(int maxLength) {
+            this.maxLength = maxLength;
+            this.headLimit = Math.min(2000, Math.max(500, maxLength / 4));
+            this.tailLimit = Math.max(500, maxLength - headLimit);
+        }
+
+        private synchronized void append(String value) {
+            totalLength += value.length();
+            if (head.length() < headLimit) {
+                int remaining = headLimit - head.length();
+                head.append(value, 0, Math.min(remaining, value.length()));
+            }
+            tail.addLast(value);
+            tailLength += value.length();
+            while (tailLength > tailLimit && tail.size() > 1) {
+                tailLength -= tail.removeFirst().length();
+            }
+        }
+
+        private synchronized String value() {
+            if (totalLength <= headLimit) {
+                return head.toString();
+            }
+            StringBuilder result = new StringBuilder(maxLength + 64)
+                    .append(head)
+                    .append("\n... 日志已截断，保留末尾 ...\n");
+            tail.forEach(result::append);
+            if (result.length() > maxLength) {
+                return result.substring(0, headLimit)
+                        + "\n... 日志已截断，保留末尾 ...\n"
+                        + result.substring(result.length() - tailLimit);
+            }
+            return result.toString();
+        }
+    }
 }

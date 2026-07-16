@@ -10,6 +10,7 @@ import com.bubble.bubbleai.innerservice.InnerUserService;
 import com.bubble.bubbleai.model.dto.chathistory.ChatHistoryQueryRequest;
 import com.bubble.bubbleai.model.entity.ChatHistory;
 import com.bubble.bubbleai.model.entity.User;
+import com.bubble.bubbleai.model.vo.ChatHistoryVO;
 import com.bubble.bubbleaiapp.service.ChatHistoryService;
 import com.mybatisflex.core.paginate.Page;
 import jakarta.annotation.Resource;
@@ -44,12 +45,12 @@ public class ChatHistoryController {
      * @return 对话历史分页
      */
     @GetMapping("/app/{appId}")
-    public BaseResponse<Page<ChatHistory>> listAppChatHistory(@PathVariable Long appId,
-                                                              @RequestParam(defaultValue = "10") int pageSize,
-                                                              @RequestParam(required = false) LocalDateTime lastCreateTime,
-                                                              HttpServletRequest request) {
+    public BaseResponse<Page<ChatHistoryVO>> listAppChatHistory(@PathVariable Long appId,
+                                                                @RequestParam(defaultValue = "10") int pageSize,
+                                                                @RequestParam(required = false) LocalDateTime lastCreateTime,
+                                                                HttpServletRequest request) {
         User loginUser = InnerUserService.getLoginUser(request);
-        Page<ChatHistory> result = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreateTime, loginUser);
+        Page<ChatHistoryVO> result = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreateTime, loginUser);
         return ResultUtils.success(result);
     }
 

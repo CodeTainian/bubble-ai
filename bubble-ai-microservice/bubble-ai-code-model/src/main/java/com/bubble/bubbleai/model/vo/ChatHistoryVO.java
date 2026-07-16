@@ -22,6 +22,10 @@ public class ChatHistoryVO implements Serializable {
      */
     private String message;
 
+    private String messageSource;
+
+    private Boolean visibleToUser;
+
     /**
      * 消息类型：user/ai/error
      */

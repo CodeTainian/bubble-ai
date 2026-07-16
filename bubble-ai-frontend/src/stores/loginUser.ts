@@ -11,19 +11,27 @@ export const useLoginUserStore = defineStore('loginUser', ()=>{
   const loginUser = ref<API.LoginUserVO>({
     userName: "未登录",
   })
+  const initialized = ref(false)
 
   //获取登录用户信息
   async function fetchLoginUser() {
-    const res = await getLoginUser();
-    if(res.data.code===0&&res.data.data){
-      loginUser.value = res.data.data
+    try {
+      const res = await getLoginUser();
+      if(res.data.code===0&&res.data.data){
+        loginUser.value = res.data.data
+      } else {
+        loginUser.value = { userName: '未登录' }
+      }
+    } finally {
+      initialized.value = true
     }
   }
 
   //更新用户登录信息
   function setLoginUser(newLoginUser: API.LoginUserVO) {
     loginUser.value = newLoginUser
+    initialized.value = true
   }
 
-  return {loginUser,fetchLoginUser ,setLoginUser}
+  return {loginUser, initialized, fetchLoginUser, setLoginUser}
 })
