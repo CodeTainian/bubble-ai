@@ -5,6 +5,7 @@ import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
+import com.microsoft.playwright.Response;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Paths;
@@ -24,7 +25,8 @@ public class ScreenshotServiceImpl implements ScreenshotService {
                                 .setViewportSize(1280, 720)
                 );
 
-                page.navigate(url);
+                Response response = page.navigate(url);
+                ensureSuccessfulNavigation(response, url);
                 page.waitForLoadState();
 
                 page.screenshot(
@@ -33,6 +35,17 @@ public class ScreenshotServiceImpl implements ScreenshotService {
                                 .setFullPage(false)
                 );
             }
+        }
+    }
+
+    static void ensureSuccessfulNavigation(Response response, String url) {
+        if (response == null) {
+            throw new IllegalStateException("截图页面未返回 HTTP 响应，url=" + url);
+        }
+        if (!response.ok()) {
+            throw new IllegalStateException(
+                    "截图页面访问失败，HTTP " + response.status() + " " + response.statusText() + ", url=" + url
+            );
         }
     }
 
