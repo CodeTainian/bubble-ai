@@ -17,29 +17,36 @@ spring:
       ttl: 3600 # 缓存过期时间（秒）
       database: 0
   session:
-    timeout: 2592000s
+    timeout: ${SPRING_SESSION_TIMEOUT:2h}
+    redis:
+      # 单体和微服务使用不同命名空间，便于定位来源并避免相互污染。
+      namespace: "${SPRING_SESSION_REDIS_NAMESPACE:bubble-ai:monolith:session}"
 server:
   port: 8123
   servlet:
     context-path: /api
     session:
       cookie:
-        #设置30天过期
-        # HTTP 部署默认使用 lax + 非 secure，否则浏览器会拒绝保存 session cookie
-        # 若部署为 HTTPS 且前后端跨站访问，可通过环境变量改为 none + true
+        # 线上为 HTTPS；本地 HTTP 开发时通过 SESSION_COOKIE_SECURE=false 覆盖。
         same-site: ${SESSION_COOKIE_SAME_SITE:lax}
-        secure: ${SESSION_COOKIE_SECURE:false}
+        secure: ${SESSION_COOKIE_SECURE:true}
         http-only: true
-        max-age: 2592000
 #springdoc-openapi
 springdoc:
+  # 文档默认关闭；本地需要时同时显式开启 Springdoc 与 Knife4j。
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:false}
   group-configs:
     - group: 'default'
       packages-to-scan: com.bubble.bubbleai.controller
 
 #knife4j
 knife4j:
-  enable: true
+  # Knife4j 4.4.0 的 BasicAuth Filter 会对每个请求调用 getSession()。
+  # 如需本地文档可显式设为 true；线上应保持 false，并由网关保护文档入口。
+  enable: ${KNIFE4J_ENABLE:false}
   setting:
     language: zh_cn
 
@@ -50,6 +57,9 @@ app:
     batch-size: ${APP_CLEANUP_BATCH_SIZE:100}
 
 bubble-ai:
+  session:
+    # 临时诊断开关：定位完成后在环境变量中设为 false。
+    creation-log-enabled: ${SESSION_CREATION_LOG_ENABLED:true}
   generation:
     react:
       install-timeout-seconds: ${REACT_INSTALL_TIMEOUT_SECONDS:300}

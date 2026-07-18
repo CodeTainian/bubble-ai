@@ -52,10 +52,9 @@ mybatis-flex:
     log-impl: ''
 
 knife4j:
+  enable: false
   basic:
-    enable: ${KNIFE4J_BASIC_ENABLE:true}
-    username: ${KNIFE4J_BASIC_USERNAME:root}
-    password: ${KNIFE4J_BASIC_PASSWORD:123456}
+    enable: false
 
 code:
   deploy-host: ${CODE_DEPLOY_HOST:http://localhost/api/static}

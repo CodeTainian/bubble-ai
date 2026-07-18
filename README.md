@@ -241,13 +241,34 @@ MySQL 中的聊天历史是可查询的业务事实，Redis Chat Memory 是面�
 
 ### 6. 安全与稳定性
 
-- Session Cookie 支持按 HTTP/HTTPS 部署方式调整 `SameSite` 和 `Secure`
+- Session 默认空闲超时为 2 小时，Cookie 为浏览器会话 Cookie；HTTPS 默认启用 `Secure`
+- 单体 Session 使用 `bubble-ai:monolith:session` 命名空间，微服务共享 `bubble-ai:microservice:session`
+- `SESSION_CREATION_LOG_ENABLED=true` 会临时记录 Session 创建请求，定位完成后应设为 `false`
+- Knife4j 4.4.0 默认禁用：其 BasicAuth Filter 会在所有请求上创建 Session；生产文档入口应由网关鉴权
+- 本地需要接口文档时，显式设置 `KNIFE4J_ENABLE=true`、`SPRINGDOC_API_DOCS_ENABLED=true` 和 `SPRINGDOC_SWAGGER_UI_ENABLED=true`
 - 用户只能生成、部署和下载自己的应用，管理员接口通过注解鉴权
 - 基于 Redisson 与 AOP 的用户级 AI 请求限流
 - 输入 Guardrail 在调用模型前进行 Prompt 安全检查
 - SSE 将内部异常转换为稳定的业务错误结构
 - 生成目录定时清理，减少临时文件长期占用磁盘
 - 热门列表缓存仅覆盖有限页数，并在应用变更后主动失效
+
+#### Session 诊断与历史清理
+
+发布后先确认日志中只有成功登录请求出现 `SESSION_CREATION_CALL` / `SESSION_CREATED`，再设置
+`SESSION_CREATION_LOG_ENABLED=false` 关闭临时调用栈。所有旧实例停止后，可以先统计旧默认命名空间：
+
+```bash
+redis-cli --scan --pattern 'spring:session:*' | wc -l
+```
+
+确认新会话已经写入 `bubble-ai:monolith:session:*` 后，再分批异步删除旧键：
+
+```bash
+redis-cli --scan --pattern 'spring:session:*' | xargs -r -n 200 redis-cli UNLINK
+```
+
+远程 Redis 应通过 `REDISCLI_AUTH` 或密钥管理注入认证信息。不要使用 `FLUSHDB`，因为同一数据库还包含业务缓存、限流和对话记忆。
 
 ## 项目结构
 

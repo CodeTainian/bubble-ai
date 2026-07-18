@@ -6,8 +6,10 @@ spring:
   # session
   session:
     store-type: redis
-    # 30 days expire
-    timeout: 2592000
+    timeout: ${SPRING_SESSION_TIMEOUT:2h}
+    redis:
+      # app 与 user 服务必须共享同一命名空间，才能共享登录态。
+      namespace: "${SPRING_SESSION_REDIS_NAMESPACE:bubble-ai:microservice:session}"
   # mysql
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -26,18 +28,24 @@ server:
   port: ${SERVER_PORT:8125}
   servlet:
     context-path: /api
-    # 30 days expire
     session:
       cookie:
-        max-age: 2592000
+        same-site: ${SESSION_COOKIE_SAME_SITE:lax}
+        secure: ${SESSION_COOKIE_SECURE:true}
+        http-only: true
 # springdoc-openapi
 springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:false}
   group-configs:
     - group: 'default'
       packages-to-scan: com.bubble.bubbleaiapp.controller
 # knife4j
 knife4j:
-  enable: true
+  # 4.4.0 的 BasicAuth Filter 会为所有请求创建 Session，默认禁用。
+  enable: false
   setting:
     language: zh_cn
 
